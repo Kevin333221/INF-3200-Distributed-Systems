@@ -15,9 +15,9 @@ class MyHTTPRequestHandler(BaseHTTPRequestHandler):
             self.wfile.write(b'404 Not Found')
 
 def run_server():
-    server_address = ('', 8080)
+    server_address = ('', 50124)
     httpd = HTTPServer(server_address, MyHTTPRequestHandler)
-    print('Server running on port 8080')
+    print('Server running on port 50124')
     httpd.serve_forever()
 
 run_server()
