@@ -1,4 +1,5 @@
 from http.server import BaseHTTPRequestHandler, HTTPServer
+import sys
 
 class MyHTTPRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -14,10 +15,15 @@ class MyHTTPRequestHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(b'404 Not Found')
 
-def run_server():
-    server_address = ('', 50124)
+def run_server(port):
+    server_address = ('', port)
     httpd = HTTPServer(server_address, MyHTTPRequestHandler)
-    print('Server running on port 50124')
+    print(f'Server running on port {port}')
     httpd.serve_forever()
 
-run_server()
+
+if __name__ == '__main__':
+
+    port = sys.argv[1]
+    print(f"Port: {port}")
+    run_server(int(port))
