@@ -15,3 +15,7 @@
     ```bash
     python3 testscript.py '<output_array>'
     ```
+4. After running the testscript, clean up the nodes by running:
+    ```bash
+    ./clean.sh
+    ```
