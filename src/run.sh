@@ -40,8 +40,10 @@ do
     port=$(shuf -i 49152-65535 -n1)
     nodePort="$node:$port"
 
-    # Start server on node with random port
-    ssh -f $node "cd $PWD && python3 server.py $port" && echo "Server started on $node:$port"
+    # Start server on node with random port in either Python or Go
+    
+    # ssh -f $node "cd $PWD && python3 server.py $port" && echo "Server started on $node:$port"
+    ssh -f $node "cd $PWD && go run server.go $port" && echo "Server started on $node:$port"
 
     # Addd node to node list
     node_list+="\"$nodePort\","
