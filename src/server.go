@@ -16,12 +16,12 @@ import (
 type Node struct {
 	Id          int            `json:"id"`
 	FingerTable []*FingerEntry `json:"finger_table"`
-	SuccessorID int            `json:"successor_id"`
+	SuccessorID int            `json:"successorID"`
 }
 
 type FingerEntry struct {
 	Start       int `json:"start"`
-	SuccessorID int `json:"successor_id"`
+	SuccessorID int `json:"successorID"`
 }
 
 type Server struct {
@@ -46,15 +46,14 @@ func InitServer(port string, node *Node) {
 		},
 	}
 
-	// fmt.Printf("\nServer initialized with port %s and node ID %d Server hostname: %s\n", serverInstance.port, serverInstance.node.Id, serverInstance.hostname)
-	fmt.Printf("\nNode: %v\n", serverInstance.node)
+	fmt.Printf("\nServer initialized with port %s and node ID %d Server hostname: %s\n", serverInstance.port, serverInstance.node.Id, serverInstance.hostname)
 
-	// // Looping through the finger table of the node
-	// for _, finger := range serverInstance.node.FingerTable {
-	// 	fmt.Printf("Finger start: %d, Finger successor ID: %d\n", finger.Start, finger.SuccessorID)
-	// }
+	// Looping through the finger table of the node
+	for _, finger := range serverInstance.node.FingerTable {
+		fmt.Printf("Finger start: %d, Finger successor ID: %d\n", finger.Start, finger.SuccessorID)
+	}
 
-	// fmt.Printf("Successor ID: %d\n", serverInstance.node.SuccessorID)
+	fmt.Printf("\n")
 
 	// Channel to listen for shutdown signal (interrupts or timer)
 	shutdownChan := make(chan os.Signal, 1)
@@ -132,7 +131,13 @@ func networkHandler(w http.ResponseWriter, r *http.Request) {
 		// Return list of known nodes
 		w.WriteHeader(http.StatusOK)
 		w.Header().Set("Content-Type", "application/json")
-		// json.NewEncoder(w).Encode(all_known_nodes)
+
+		w.Write([]byte(
+			"Known nodes:\n",
+		))
+		for _, node := range serverInstance.node.FingerTable {
+			w.Write([]byte(fmt.Sprintf("NodeID: %d\n", node.SuccessorID)))
+		}
 
 	} else {
 		w.WriteHeader(http.StatusMethodNotAllowed)

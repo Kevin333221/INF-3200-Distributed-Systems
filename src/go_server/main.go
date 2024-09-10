@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-const m = 6          // Number of bits in the identifier space
+var m int            // Number of bits in the identifier space
 var amount_nodes int // Number of nodes in the Chord ring
 
 func main() {
@@ -17,6 +17,7 @@ func main() {
 	// run_test()
 
 	amount_nodes, _ = strconv.Atoi(os.Args[1])
+	m, _ = strconv.Atoi(os.Args[2])
 	allnodes := initializeChordRing()
 
 	// Convert the nodes to JSON

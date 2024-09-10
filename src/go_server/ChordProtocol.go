@@ -32,7 +32,7 @@ type FingerEntry struct {
 // Returns: None
 func _initFingerTable(n *Node, allNodes []*Node) {
 	for i := 1; i <= m; i++ {
-		start := (n.Id + int(math.Pow(2, float64(i-1)))) % int(math.Pow(2, m)) // Start value for the finger entry
+		start := (n.Id + int(math.Pow(2, float64(i-1)))) % int(math.Pow(2, float64(m))) // Start value for the finger entry
 		successor := findSuccessor(start, allNodes)                            // Find the successor node for the start value
 
 		finger := &FingerEntry{
