@@ -31,27 +31,38 @@ num_available_nodes=${#node_array[@]}
 # Initialize and format list
 node_list="["
 
-for ((i=0; i<$1; i++));
-do
-    # Get node from array, wrap around if needed
-    node=${node_array[$((i % num_available_nodes))]}
+# Get node IDs
+go build && ./go_server $num_available_nodes
 
-    # Get random port
+echo "Number of available nodes: $num_available_nodes"
+echo ""
+
+# Read and process each line of Nodes.json
+counter=0
+while IFS= read -r line; do
+
+    # Extract key-value pairs from the current line
+    id=$(echo "$line" | sed -n 's/.*"id":\([0-9]*\).*/\1/p')
     port=$(shuf -i 49152-65535 -n1)
+
+    # Get node from array, wrap around if needed
+    node=${node_array[$((counter % num_available_nodes))]}
     nodePort="$node:$port"
-
-    # Start server on node with random port in either Python or Go
     
-    # ssh -f $node "cd $PWD && python3 server.py $port" && echo "Server started on $node:$port"
-    ssh -f $node "cd $PWD && go run server.go $port" && echo "Server started on $node:$port"
+    # Start server on node with random port in either Python or Go
+    ssh -f $node "cd $PWD && go build && cd .. && go run server.go $port $id && echo Server started on $node:$port"
 
-    # Addd node to node list
+    # echo "Server started on $node:$port with ID $id"
+
+    # Add node to node list
     node_list+="\"$nodePort\","
-done
+    counter=$((counter + 1))
 
-# Format the node list
-node_list=${node_list::-1}
-node_list+="]"
+done < Nodes.json
 
-# Print the list
-echo "Node list: $node_list"
+# # Format the node list
+# node_list=${node_list::-1}
+# node_list+="]"
+
+# # Print the list
+# echo "Node list: $node_list"
