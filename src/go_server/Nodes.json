@@ -1,0 +1,9 @@
+[{"id":0,"finger_table":[{"start":1,"successorID":8},{"start":2,"successorID":8},{"start":4,"successorID":8},{"start":8,"successorID":8},{"start":16,"successorID":16},{"start":32,"successorID":32}],"successorID":8},
+{"id":8,"finger_table":[{"start":9,"successorID":16},{"start":10,"successorID":16},{"start":12,"successorID":16},{"start":16,"successorID":16},{"start":24,"successorID":24},{"start":40,"successorID":40}],"successorID":16},
+{"id":16,"finger_table":[{"start":17,"successorID":24},{"start":18,"successorID":24},{"start":20,"successorID":24},{"start":24,"successorID":24},{"start":32,"successorID":32},{"start":48,"successorID":48}],"successorID":24},
+{"id":24,"finger_table":[{"start":25,"successorID":32},{"start":26,"successorID":32},{"start":28,"successorID":32},{"start":32,"successorID":32},{"start":40,"successorID":40},{"start":56,"successorID":56}],"successorID":32},
+{"id":32,"finger_table":[{"start":33,"successorID":40},{"start":34,"successorID":40},{"start":36,"successorID":40},{"start":40,"successorID":40},{"start":48,"successorID":48},{"start":0,"successorID":0}],"successorID":40},
+{"id":40,"finger_table":[{"start":41,"successorID":48},{"start":42,"successorID":48},{"start":44,"successorID":48},{"start":48,"successorID":48},{"start":56,"successorID":56},{"start":8,"successorID":8}],"successorID":48},
+{"id":48,"finger_table":[{"start":49,"successorID":56},{"start":50,"successorID":56},{"start":52,"successorID":56},{"start":56,"successorID":56},{"start":0,"successorID":0},{"start":16,"successorID":16}],"successorID":56},
+{"id":56,"finger_table":[{"start":57,"successorID":0},{"start":58,"successorID":0},{"start":60,"successorID":0},{"start":0,"successorID":0},{"start":8,"successorID":8},{"start":24,"successorID":24}],"successorID":0}
+]

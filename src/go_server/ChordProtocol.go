@@ -1,19 +1,20 @@
 package main
 
 import (
-	"fmt"
 	"math"
 )
 
 type Node struct {
-	id          int
-	fingerTable []*FingerEntry
+	Id          int            `json:"id"`
+	FingerTable []*FingerEntry `json:"finger_table"`
 	successor   *Node
+	SuccessorID int `json:"successorID"`
 }
 
 type FingerEntry struct {
-	start     int
-	successor *Node
+	Start       int `json:"start"`
+	successor   *Node
+	SuccessorID int `json:"successorID"`
 }
 
 // FingerTable initialization for a node
@@ -29,17 +30,18 @@ type FingerEntry struct {
 // - allNodes: A slice containing all the nodes in the system.
 //
 // Returns: None
-func initFingerTable(n *Node, allNodes []*Node) {
+func _initFingerTable(n *Node, allNodes []*Node) {
 	for i := 1; i <= m; i++ {
-		start := (n.id + int(math.Pow(2, float64(i-1)))) % int(math.Pow(2, m)) // Start of the interval
+		start := (n.Id + int(math.Pow(2, float64(i-1)))) % int(math.Pow(2, m)) // Start value for the finger entry
+		successor := findSuccessor(start, allNodes)                            // Find the successor node for the start value
+
 		finger := &FingerEntry{
-			start:     start,
-			successor: findSuccessor(start, allNodes), // Find the successor node for the interval
+			Start:       start,
+			successor:   successor, // Find the successor node for the start value
+			SuccessorID: successor.Id,
 		}
-		n.fingerTable = append(n.fingerTable, finger) // Add the finger entry to the finger table
-		fmt.Printf("Finger entry %d: Start = %d, Successor = %d\n", i, finger.start, finger.successor.id)
+		n.FingerTable = append(n.FingerTable, finger) // Add the finger entry to the finger table
 	}
-	fmt.Println()
 }
 
 // Find the successor node for a given key
@@ -55,7 +57,7 @@ func initFingerTable(n *Node, allNodes []*Node) {
 // - The successor node for the given key.
 func findSuccessor(key int, allNodes []*Node) *Node {
 	for _, node := range allNodes { // Iterate through all nodes to find the successor
-		if node.id >= key { // If the node ID is greater than or equal to the key
+		if node.Id >= key { // If the node ID is greater than or equal to the key
 			return node // Return the node as the successor
 		}
 	}
@@ -68,31 +70,29 @@ func findSuccessor(key int, allNodes []*Node) *Node {
 
 // Parameters: None
 // Returns: None
+func initializeChordRing() []*Node {
 
-func initializeChordRing() {
 	// Initialize nodes in the Chord ring
 	allNodes := make([]*Node, amount_nodes)
 
 	// Need to spread the nodes across the identifier space evenly
-	interval := int(math.Floor(math.Pow(2, m) / amount_nodes))
+	interval := int(math.Floor(math.Pow(2, float64(m)) / float64(amount_nodes)))
 	for i := 0; i < amount_nodes; i++ {
 		allNodes[i] = &Node{
-			id: i * interval,
+			Id: i * interval,
 		}
 	}
 
 	// Link nodes in a simple circle (successor)
 	for i, node := range allNodes {
 		node.successor = allNodes[(i+1)%len(allNodes)]
+		node.SuccessorID = node.successor.Id
 	}
 
 	// Initialize finger tables for each node
 	for _, node := range allNodes {
-		initFingerTable(node, allNodes)
-		fmt.Printf("Finger table for node %d:\n", node.id)
-		for i, finger := range node.fingerTable {
-			fmt.Printf("Entry %d: Start = %d, Successor = %d\n", i+1, finger.start, finger.successor.id)
-		}
-		fmt.Println()
+		_initFingerTable(node, allNodes)
 	}
+
+	return allNodes
 }
