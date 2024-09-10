@@ -14,14 +14,14 @@ import (
 )
 
 type Node struct {
-	Id          int
-	FingerTable []*FingerEntry
-	SuccessorID int
+	Id          int            `json:"id"`
+	FingerTable []*FingerEntry `json:"finger_table"`
+	SuccessorID int            `json:"successor_id"`
 }
 
 type FingerEntry struct {
-	Start       int
-	SuccessorID int
+	Start       int `json:"start"`
+	SuccessorID int `json:"successor_id"`
 }
 
 type Server struct {
@@ -47,7 +47,7 @@ func InitServer(port string, node *Node) {
 	}
 
 	// fmt.Printf("\nServer initialized with port %s and node ID %d Server hostname: %s\n", serverInstance.port, serverInstance.node.Id, serverInstance.hostname)
-	fmt.Printf("\nNode: %d\n", serverInstance.node)
+	fmt.Printf("\nNode: %v\n", serverInstance.node)
 
 	// // Looping through the finger table of the node
 	// for _, finger := range serverInstance.node.FingerTable {
