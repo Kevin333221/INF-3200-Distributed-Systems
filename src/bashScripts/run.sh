@@ -12,6 +12,17 @@ if ! [[ "$1" =~ ^[0-9]+$ ]] || [ "$1" -le 0 ]; then
   exit 1
 fi
 
+if [ -z "$2" ]; then
+  echo "Usage: $0 $1 <identifier space (bit)>"
+  exit 1
+fi
+
+# Check that number is positive integer
+if ! [[ "$2" =~ ^[0-9]+$ ]] || [ "$2" -le 0 ]; then
+  echo "Error: Argument must be a positive integer."
+  exit 1
+fi
+
 # Get available nodes
 nodes=$(/share/ifi/available-nodes.sh)
 
@@ -31,8 +42,10 @@ num_available_nodes=${#node_array[@]}
 # Initialize and format list
 node_list="["
 
+cd ../go_server
+
 # Get node IDs
-go build && ./go_server $num_available_nodes
+go build && ./go_server $num_available_nodes $2
 
 echo "Number of available nodes: $num_available_nodes"
 echo ""
@@ -50,19 +63,10 @@ while IFS= read -r line; do
     nodePort="$node:$port"
     
     # Start server on node with random port in either Python or Go
-    ssh -f $node "cd $PWD && go build && cd .. && go run server.go $port $id && echo Server started on $node:$port"
-
-    # echo "Server started on $node:$port with ID $id"
+    ssh -f $node "cd $PWD/.. && go run server.go $port $id && echo Server started on $node:$port"
 
     # Add node to node list
     node_list+="\"$nodePort\","
     counter=$((counter + 1))
 
 done < Nodes.json
-
-# # Format the node list
-# node_list=${node_list::-1}
-# node_list+="]"
-
-# # Print the list
-# echo "Node list: $node_list"
