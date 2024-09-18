@@ -97,7 +97,7 @@ func InitServer(node *Node) {
 	fmt.Println("Server exiting")
 }
 
-func hash(input string) (uint64) {
+func hash(input string) uint64 {
 
 	// Hash the input using SHA-256
 	hash := sha256.Sum256([]byte(input))
