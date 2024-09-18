@@ -216,11 +216,6 @@ func main() {
 		return
 	}
 
-	if err != nil {
-		fmt.Println("Error parsing node ID:", err)
-		return
-	}
-
 	// Read data from "Nodes.json"
 	file, err := os.Open("DeployServers/Nodes.json")
 	if err != nil {
