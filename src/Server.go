@@ -165,6 +165,35 @@ func httpReq(url string) (*http.Response, error) {
 	return client.Get(url)
 }
 
+func forwardGetStorageRequest(w http.ResponseWriter, address string, key string, value string) {
+	// Format the URL
+	url := fmt.Sprintf("http://%s/storage/%s", address, key)
+
+	// Forward the request to the given node
+	req, err := http.NewRequest("PUT", url, strings.NewReader(value))
+    if err != nil {
+        http.Error(w, "Error creating request", http.StatusInternalServerError)
+        return
+    }
+
+	client := &http.Client{Timeout: 10 * time.Second}
+    resp, err := client.Do(req)
+    if err != nil {
+        http.Error(w, "Error connecting to successor node", http.StatusInternalServerError)
+        return
+    }
+    defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusOK {
+        w.WriteHeader(http.StatusOK)
+	} else {
+		http.Error(w, "Error forwarding request to successor node", http.StatusInternalServerError)
+	}
+
+	w.WriteHeader(resp.StatusCode)
+	io.Copy(w, resp.Body)
+}
+
 // GET: Returns HTTP code 200, with value, if <key> exists in the DHT. Returns HTTP code 404, if <key> does not exist in the DHT.
 // PUT: Returns HTTP code 200. Assumed that <value> is persisted
 func storageHandler(w http.ResponseWriter, r *http.Request) {
