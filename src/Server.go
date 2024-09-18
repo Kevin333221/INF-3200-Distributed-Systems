@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -16,44 +18,58 @@ import (
 type Node struct {
 	Id          int            `json:"id"`
 	FingerTable []*FingerEntry `json:"finger_table"`
-	SuccessorID int            `json:"successorID"`
+	SuccessorID *NodeAddress   `json:"successorID"`
+	Address     string         `json:"address"`
 }
 
 type FingerEntry struct {
-	Start       int `json:"start"`
-	SuccessorID int `json:"successorID"`
+	Start       int          `json:"start"`
+	SuccessorID *NodeAddress `json:"successorID"`
+}
+
+type NodeAddress struct {
+	Id      int    `json:"id"`
+	Address string `json:"address"`
 }
 
 type Server struct {
+	hostname string
 	port     string
 	node     *Node
-	hostname string
 	server   *http.Server
+	storage  map[uint64]string
 }
 
 var serverInstance *Server
+var keyIdentifierSpace int
 
-func InitServer(port string, node *Node) {
+func InitServer(node *Node) {
+
+	addressParts := strings.Split(node.Address, ":")
+
+	keyIdentifierSpace = len(node.FingerTable)
 
 	// Create a new server instance
 	serverInstance = &Server{
-		port:     port,
+		hostname: addressParts[0],
+		port:     addressParts[1],
 		node:     node,
-		hostname: strings.Split(getHostName(), ".")[0],
-		server: &http.Server{
-			Addr:    ":" + port,
-			Handler: initMux(),
-		},
+		storage:  make(map[uint64]string),
 	}
 
-	fmt.Printf("\nServer initialized with port %s and node ID %d Server hostname: %s\n", serverInstance.port, serverInstance.node.Id, serverInstance.hostname)
-
-	// Looping through the finger table of the node
-	for _, finger := range serverInstance.node.FingerTable {
-		fmt.Printf("Finger start: %d, Finger successor ID: %d\n", finger.Start, finger.SuccessorID)
+	serverInstance.server = &http.Server{
+		Addr:    ":" + serverInstance.port,
+		Handler: initMux(),
 	}
 
-	fmt.Printf("\n")
+	fmt.Printf("\nServer initialized at: %s and node ID %d\n", serverInstance.hostname+":"+serverInstance.port, serverInstance.node.Id)
+
+	// // Looping through the finger table of the node
+	// for _, finger := range serverInstance.node.FingerTable {
+	// 	fmt.Printf("Finger start: %d, Finger successor ID: %d\n", finger.Start, finger.SuccessorID.Id)
+	// }
+
+	// fmt.Printf("\n")
 
 	// Channel to listen for shutdown signal (interrupts or timer)
 	shutdownChan := make(chan os.Signal, 1)
@@ -74,19 +90,23 @@ func InitServer(port string, node *Node) {
 	fmt.Println("Server exiting")
 }
 
-func getHostName() string {
-	name, hostNameError := os.Hostname()
-	if hostNameError != nil {
-		fmt.Println("Error: ", hostNameError)
-		return ""
-	}
-	return name
+func hash(input string) (uint64, string) {
+
+	// Hash the input using SHA-256
+	hash := sha256.Sum256([]byte(input))
+
+	// Convert the first 8 bytes of the hash to a uint64
+	hashedValue := binary.BigEndian.Uint64(hash[:8])
+
+	// Apply modulo 2^n to restrict the result between 0 and 2^n - 1
+	maxValue := uint64(1<<keyIdentifierSpace) - 1
+	return hashedValue % maxValue, input
 }
 
 func initMux() *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/helloworld", helloworldHandler)
-	mux.HandleFunc("/storage/<key>", storageHandler)
+	mux.HandleFunc("/storage/", storageHandler)
 	mux.HandleFunc("/network", networkHandler)
 	return mux
 }
@@ -118,10 +138,42 @@ func startServerShutdownTimer(shutdownChan chan os.Signal) {
 // GET: Returns HTTP code 200, with value, if <key> exists in the DHT. Returns HTTP code 404, if <key> does not exist in the DHT.
 // PUT: Returns HTTP code 200. Assumed that <value> is persisted
 func storageHandler(w http.ResponseWriter, r *http.Request) {
+
 	if r.Method == "GET" {
-		// Check if key exists in the DHT
+		// key := strings.TrimPrefix(r.URL.Path, "/storage/")
+		// keyInt, _ := strconv.Atoi(key)
+		// for _, finger := range serverInstance.node.FingerTable {
+
+		// }
+
+		// Key not found
+		w.WriteHeader(http.StatusNotFound)
+
 	} else if r.Method == "PUT" {
 		// Add key to DHT
+		// 	body, err := io.ReadAll(r.Body)
+		// 	if err != nil {
+		// 		fmt.Println("Error reading body:", err)
+		// 		w.WriteHeader(http.StatusInternalServerError)
+		// 		return
+		// 	}
+		// 	defer r.Body.Close()
+
+		// 	// Assume body contains SuccessorID as plain text
+		// 	var successorID int
+		// 	if err := json.Unmarshal(body, &successorID); err != nil {
+		// 		http.Error(w, "Invalid body format", http.StatusBadRequest)
+		// 		return
+		// 	}
+
+		// 	if finger.SuccessorID == successorID {
+		// 		w.WriteHeader(http.StatusOK)
+		// 		w.Header().Set("Content-Type", "text/plain")
+		// 		w.Write([]byte(fmt.Sprintf("Found: %+v", finger)))
+		// 		return
+		// 	}
+		// }
+		// w.WriteHeader(http.StatusNotFound)
 	}
 }
 
@@ -131,12 +183,11 @@ func networkHandler(w http.ResponseWriter, r *http.Request) {
 		// Return list of known nodes
 		w.WriteHeader(http.StatusOK)
 		w.Header().Set("Content-Type", "application/json")
-
 		w.Write([]byte(
 			"Known nodes:\n",
 		))
 		for _, node := range serverInstance.node.FingerTable {
-			w.Write([]byte(fmt.Sprintf("NodeID: %d\n", node.SuccessorID)))
+			w.Write([]byte(fmt.Sprintf("NodeID: %d\n", node.SuccessorID.Id)))
 		}
 
 	} else {
@@ -158,11 +209,20 @@ func helloworldHandler(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 
-	port := os.Args[1]
-	nodeID := os.Args[2]
+	nodeID, err := strconv.Atoi(os.Args[1])
+
+	if err != nil {
+		fmt.Println("Error parsing node ID:", err)
+		return
+	}
+
+	if err != nil {
+		fmt.Println("Error parsing node ID:", err)
+		return
+	}
 
 	// Read data from "Nodes.json"
-	file, err := os.Open("go_server/Nodes.json")
+	file, err := os.Open("DeployServers/Nodes.json")
 	if err != nil {
 		fmt.Println("Error opening file:", err)
 		return
@@ -180,8 +240,7 @@ func main() {
 
 	var foundNode *Node
 	for _, node := range nodes {
-		NodeID, _ := strconv.Atoi(nodeID)
-		if node.Id == NodeID {
+		if node.Id == nodeID {
 			foundNode = node
 			break
 		}
@@ -192,5 +251,5 @@ func main() {
 		return
 	}
 
-	InitServer(port, foundNode)
+	InitServer(foundNode)
 }
