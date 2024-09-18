@@ -42,31 +42,86 @@ num_available_nodes=${#node_array[@]}
 # Initialize and format list
 node_list="["
 
-cd ../go_server
+cd ../DeployServers
 
-# Get node IDs
-go build && ./go_server $num_available_nodes $2
+address_list="["
 
-echo "Number of available nodes: $num_available_nodes"
-echo ""
-
-# Read and process each line of Nodes.json
 counter=0
-while IFS= read -r line; do
+while [[ $counter -lt $num_available_nodes ]]; do
 
     # Extract key-value pairs from the current line
-    id=$(echo "$line" | sed -n 's/.*"id":\([0-9]*\).*/\1/p')
     port=$(shuf -i 49152-65535 -n1)
 
     # Get node from array, wrap around if needed
     node=${node_array[$((counter % num_available_nodes))]}
     nodePort="$node:$port"
-    
-    # Start server on node with random port in either Python or Go
-    ssh -f $node "cd $PWD/.. && go run server.go $port $id && echo Server started on $node:$port"
 
     # Add node to node list
-    node_list+="\"$nodePort\","
+    address_list+="\"$nodePort\","
+
+    counter=$((counter + 1))
+done
+
+address_list=${address_list::-1}
+address_list+="]"
+
+echo $address_list
+
+# Get node IDs
+go build && ./DeployServers $2 $address_list $num_available_nodes
+
+python3 ../DeployServers/get_ids.py
+
+until [ -f ../DeployServers/node_ids.txt ]
+do
+    sleep 1
+done
+
+counter=0
+while IFS= read -r line; do
+    id=$line
+
+    # Get node from array, wrap around if needed
+    node=${node_array[$((counter % num_available_nodes))]}
+
+    # Start server on node
+    ssh -f $node "cd $PWD/.. && go run Server.go $id $2 && echo Server started on $node"
+
     counter=$((counter + 1))
 
-done < Nodes.json
+done < node_ids.txt
+
+rm node_ids.txt
+
+# counter=0
+# while counter < $num_available_nodes; do
+
+#     # Get node from array, wrap around if needed
+#     node=${node_array[$((counter % num_available_nodes))]}
+
+#     # Start server on node with random port in either Python or Go
+#     ssh -f $node "cd $PWD/.. && go run server.go $port $id && echo Server started on $node:$port"
+
+#     counter=$((counter + 1))
+# done
+
+# # Read and process each line of Nodes.json
+# counter=0
+# while IFS= read -r line; do
+
+#     # Extract key-value pairs from the current line
+#     id=$(echo "$line" | sed -n 's/.*"id":\([0-9]*\).*/\1/p')
+#     port=$(shuf -i 49152-65535 -n1)
+
+#     # Get node from array, wrap around if needed
+#     node=${node_array[$((counter % num_available_nodes))]}
+#     nodePort="$node:$port"
+    
+#     # Start server on node with random port in either Python or Go
+#     ssh -f $node "cd $PWD/.. && go run server.go $port $id && echo Server started on $node:$port"
+
+#     # Add node to node list
+#     node_list+="\"$nodePort\","
+#     counter=$((counter + 1))
+
+# done < Nodes.json
