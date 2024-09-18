@@ -97,7 +97,7 @@ func InitServer(node *Node) {
 	fmt.Println("Server exiting")
 }
 
-func hash(input string) (uint64, string) {
+func hash(input string) (uint64) {
 
 	// Hash the input using SHA-256
 	hash := sha256.Sum256([]byte(input))
@@ -107,7 +107,7 @@ func hash(input string) (uint64, string) {
 
 	// Apply modulo 2^n to restrict the result between 0 and 2^n - 1
 	maxValue := uint64(1<<keyIdentifierSpace) - 1
-	return hashedValue % maxValue, input
+	return hashedValue % maxValue
 }
 
 func initMux() *http.ServeMux {
@@ -224,6 +224,34 @@ func storageHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 	} else if r.Method == "PUT" {
+		key := strings.TrimPrefix(r.URL.Path, "/storage/")
+		hashedKey := hash(key)
+
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			fmt.Println("Error reading body:", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		defer r.Body.Close()
+
+		value := string(body)
+		
+		if serverInstance.node.Id >= int(hashedKey) {
+			
+		}
+
+
+
+
+
+
+
+
+
+
+
+
 		// Add key to DHT
 		// 	body, err := io.ReadAll(r.Body)
 		// 	if err != nil {
