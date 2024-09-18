@@ -39,7 +39,7 @@ type Server struct {
 	port     string
 	node     *Node
 	server   *http.Server
-	storage  map[uint64]string
+	storage  map[string]string
 }
 
 var serverInstance *Server
@@ -56,7 +56,7 @@ func InitServer(node *Node) {
 		hostname: addressParts[0],
 		port:     addressParts[1],
 		node:     node,
-		storage:  make(map[uint64]string),
+		storage:  make(map[string]string),
 	}
 
 	serverInstance.server = &http.Server{
