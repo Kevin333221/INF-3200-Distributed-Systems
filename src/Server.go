@@ -65,8 +65,8 @@ func InitServer(node *Node) {
 	}
 
 	if serverInstance.node.Id == 0 {
-		serverInstance.storage[15] = "Hello, World!"
-		serverInstance.storage[14] = "Hello, World! 2"
+		//serverInstance.storage["hei"] = "Hello, World!"
+		//serverInstance.storage["hello"] = "Hello, World! 2"
 	}
 
 	fmt.Printf("\nServer initialized at: %s and node ID %d\n", serverInstance.hostname+":"+serverInstance.port, serverInstance.node.Id)
@@ -171,17 +171,12 @@ func storageHandler(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method == "GET" {
 		key := strings.TrimPrefix(r.URL.Path, "/storage/")
-		keyInt, _ := strconv.Atoi(key)
-
-		if keyInt > (1 << keyIdentifierSpace) {
-			http.Error(w, "Invalid key", http.StatusBadRequest)
-			return
-		}
+		hashedKey := int(hash(key))
 
 		if serverInstance.node.Id > serverInstance.node.PredecessorID.Id {
-			if keyInt <= serverInstance.node.Id || keyInt > serverInstance.node.PredecessorID.Id {
+			if hashedKey <= serverInstance.node.Id || hashedKey > serverInstance.node.PredecessorID.Id {
 				// Key must exist in my storage DHT
-				value, ok := serverInstance.storage[uint64(keyInt)]
+				value, ok := serverInstance.storage[key]
 				if ok {
 					w.WriteHeader(http.StatusOK)
 					w.Header().Set("Content-Type", "text/plain")
@@ -195,8 +190,8 @@ func storageHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Find the successor node for the key
-		successor := serverInstance.findSuccessor(keyInt)
-		url := fmt.Sprintf("http://%s/storage/%d", successor.Address, keyInt)
+		successor := serverInstance.findSuccessor(hashedKey)
+		url := fmt.Sprintf("http://%s/storage/%d", successor.Address, hashedKey)
 
 		w.WriteHeader(http.StatusTemporaryRedirect)
 		w.Header().Set("Content-Type", "text/plain")
