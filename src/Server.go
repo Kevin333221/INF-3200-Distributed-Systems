@@ -232,8 +232,20 @@ func storageHandler(w http.ResponseWriter, r *http.Request) {
 
 		value := string(body)
 		
-		if serverInstance.node.Id >= int(hashedKey) {
-			
+		// Check if the hashed key is within the range of the current node
+		if int(hashedKey) <= serverInstance.node.Id && int(hashedKey) > serverInstance.node.PredecessorID.Id {
+			// If the key already exists in the storage, return 403 Forbidden
+			if _, exists := serverInstance.storage[key]; exists {
+				w.WriteHeader(http.StatusForbidden)
+				w.Header().Set("Content-Type", "text/plain")
+				w.Write([]byte("Key already exists in system"))
+				return
+			}
+
+			// If not, add the key to the storage
+			serverInstance.storage[key] = value
+			w.WriteHeader(http.StatusOK)
+			return
 		}
 
 
