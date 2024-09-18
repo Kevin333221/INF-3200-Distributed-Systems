@@ -64,6 +64,11 @@ func InitServer(node *Node) {
 		Handler: initMux(),
 	}
 
+	if serverInstance.node.Id == 0 {
+		serverInstance.storage[15] = "Hello, World!"
+		serverInstance.storage[14] = "Hello, World! 2"
+	}
+
 	fmt.Printf("\nServer initialized at: %s and node ID %d\n", serverInstance.hostname+":"+serverInstance.port, serverInstance.node.Id)
 
 	// // Looping through the finger table of the node
@@ -141,9 +146,14 @@ func (s *Server) findSuccessor(key int) *NodeAddress {
 
 	// Check if the key is in the finger table
 	for _, finger := range s.node.FingerTable {
-		if key <= finger.SuccessorID.Id {
+		if s.node.Id > finger.SuccessorID.Id {
+			if key > s.node.Id || key <= finger.SuccessorID.Id {
+				return finger.SuccessorID
+			}
+		} else if key <= finger.SuccessorID.Id {
 			return finger.SuccessorID
 		}
+
 	}
 
 	// If the key is not in the finger table, return the last entry
@@ -151,9 +161,7 @@ func (s *Server) findSuccessor(key int) *NodeAddress {
 }
 
 func httpReq(url string) (*http.Response, error) {
-	client := &http.Client{
-		Timeout: 10 * time.Second,
-	}
+	client := &http.Client{Timeout: 10 * time.Second}
 	return client.Get(url)
 }
 
@@ -170,9 +178,29 @@ func storageHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		if serverInstance.node.Id > serverInstance.node.PredecessorID.Id {
+			if keyInt <= serverInstance.node.Id || keyInt > serverInstance.node.PredecessorID.Id {
+				// Key must exist in my storage DHT
+				value, ok := serverInstance.storage[uint64(keyInt)]
+				if ok {
+					w.WriteHeader(http.StatusOK)
+					w.Header().Set("Content-Type", "text/plain")
+					w.Write([]byte(value))
+					return
+				} else {
+					w.WriteHeader(http.StatusNotFound)
+					return
+				}
+			}
+		}
+
 		// Find the successor node for the key
 		successor := serverInstance.findSuccessor(keyInt)
 		url := fmt.Sprintf("http://%s/storage/%d", successor.Address, keyInt)
+
+		w.WriteHeader(http.StatusTemporaryRedirect)
+		w.Header().Set("Content-Type", "text/plain")
+		w.Write([]byte("Redirecting to: " + url))
 
 		resp, err := httpReq(url)
 		if err != nil {
@@ -188,24 +216,12 @@ func storageHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			w.WriteHeader(http.StatusOK)
 			w.Header().Set("Content-Type", "text/plain")
-			w.Write(body)
+			w.Write([]byte("\n" + string(body)))
 			return
 		} else if resp.StatusCode == http.StatusNotFound {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
-
-		// The key must/can exist in my storage DHT
-		value, ok := serverInstance.storage[uint64(keyInt)]
-		if ok {
-			w.WriteHeader(http.StatusOK)
-			w.Header().Set("Content-Type", "text/plain")
-			w.Write([]byte(value))
-			return
-		}
-
-		// Key not found
-		w.WriteHeader(http.StatusNotFound)
 
 	} else if r.Method == "PUT" {
 		// Add key to DHT
