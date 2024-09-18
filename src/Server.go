@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/signal"
@@ -16,10 +17,11 @@ import (
 )
 
 type Node struct {
-	Id          int            `json:"id"`
-	FingerTable []*FingerEntry `json:"finger_table"`
-	SuccessorID *NodeAddress   `json:"successorID"`
-	Address     string         `json:"address"`
+	Id            int            `json:"id"`
+	FingerTable   []*FingerEntry `json:"finger_table"`
+	SuccessorID   *NodeAddress   `json:"successorID"`
+	PredecessorID *NodeAddress   `json:"predecessorID"`
+	Address       string         `json:"address"`
 }
 
 type FingerEntry struct {
@@ -135,16 +137,72 @@ func startServerShutdownTimer(shutdownChan chan os.Signal) {
 	shutdownChan <- os.Interrupt
 }
 
+func (s *Server) findSuccessor(key int) *NodeAddress {
+
+	// Check if the key is in the finger table
+	for _, finger := range s.node.FingerTable {
+		if key <= finger.SuccessorID.Id {
+			return finger.SuccessorID
+		}
+	}
+
+	// If the key is not in the finger table, return the last entry
+	return s.node.FingerTable[len(s.node.FingerTable)-1].SuccessorID
+}
+
+func httpReq(url string) (*http.Response, error) {
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+	return client.Get(url)
+}
+
 // GET: Returns HTTP code 200, with value, if <key> exists in the DHT. Returns HTTP code 404, if <key> does not exist in the DHT.
 // PUT: Returns HTTP code 200. Assumed that <value> is persisted
 func storageHandler(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method == "GET" {
-		// key := strings.TrimPrefix(r.URL.Path, "/storage/")
-		// keyInt, _ := strconv.Atoi(key)
-		// for _, finger := range serverInstance.node.FingerTable {
+		key := strings.TrimPrefix(r.URL.Path, "/storage/")
+		keyInt, _ := strconv.Atoi(key)
 
-		// }
+		if keyInt > (1 << keyIdentifierSpace) {
+			http.Error(w, "Invalid key", http.StatusBadRequest)
+			return
+		}
+
+		// Find the successor node for the key
+		successor := serverInstance.findSuccessor(keyInt)
+		url := fmt.Sprintf("http://%s/storage/%d", successor.Address, keyInt)
+
+		resp, err := httpReq(url)
+		if err != nil {
+			http.Error(w, "Error connecting to successor node", http.StatusInternalServerError)
+			return
+		}
+
+		if resp.StatusCode == http.StatusOK {
+			body, err := io.ReadAll(resp.Body)
+			if err != nil {
+				http.Error(w, "Error reading response from successor node", http.StatusInternalServerError)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+			w.Header().Set("Content-Type", "text/plain")
+			w.Write(body)
+			return
+		} else if resp.StatusCode == http.StatusNotFound {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+
+		// The key must/can exist in my storage DHT
+		value, ok := serverInstance.storage[uint64(keyInt)]
+		if ok {
+			w.WriteHeader(http.StatusOK)
+			w.Header().Set("Content-Type", "text/plain")
+			w.Write([]byte(value))
+			return
+		}
 
 		// Key not found
 		w.WriteHeader(http.StatusNotFound)

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"strconv"
-	"testing"
 )
 
 var m int                 // Number of bits in the identifier space
@@ -13,9 +12,6 @@ var amount_nodes int      // Number of nodes in the Chord ring
 var address_list []string // List of addresses for the nodes
 
 func main() {
-
-	// Run the test
-	// run_test()
 
 	m, _ = strconv.Atoi(os.Args[1])
 	address_list_string := os.Args[2]
@@ -53,12 +49,4 @@ func main() {
 		fmt.Println("Error writing to file:", err)
 		return
 	}
-}
-
-func run_test() {
-	// Create a new testing object
-	t := new(testing.T)
-
-	// Run the tests
-	TestInitFingerTable(t)
 }

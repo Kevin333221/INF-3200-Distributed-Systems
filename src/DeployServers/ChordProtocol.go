@@ -5,11 +5,13 @@ import (
 )
 
 type Node struct {
-	Id          int            `json:"id"`
-	FingerTable []*FingerEntry `json:"finger_table"`
-	successor   *Node
-	SuccessorID *NodeAddress `json:"successorID"`
-	Address     string       `json:"address"`
+	Id            int            `json:"id"`
+	FingerTable   []*FingerEntry `json:"finger_table"`
+	successor     *Node
+	predecessor   *Node
+	SuccessorID   *NodeAddress `json:"successorID"`
+	PredecessorID *NodeAddress `json:"predecessorID"`
+	Address       string       `json:"address"`
 }
 
 type FingerEntry struct {
@@ -93,6 +95,15 @@ func findSuccessor(key int, allNodes []*Node) *Node {
 	return allNodes[0] // Wrap around to the first node
 }
 
+// func findPredecessor(key int, allNodes []*Node) *Node {
+// 	for i := len(allNodes) - 1; i >= 0; i-- {
+// 		if allNodes[i].Id < key {
+// 			return allNodes[i]
+// 		}
+// 	}
+// 	return allNodes[len(allNodes)-1]
+// }
+
 // Initialize the Chord ring
 // initializeChordRing initializes the Chord ring with a specified number of nodes.
 // It creates a list of nodes, spreads them evenly across the identifier space, and links them in a simple circle.
@@ -115,10 +126,17 @@ func initializeChordRing() []*Node {
 
 	// Link nodes in a simple circle (successor)
 	for i, node := range allNodes {
+
 		node.successor = allNodes[(i+1)%len(allNodes)]
+		node.predecessor = allNodes[(i-1+len(allNodes))%len(allNodes)]
+
 		node.SuccessorID = &NodeAddress{
 			Id:      node.successor.Id,
 			Address: address_list[(i+1)%len(allNodes)],
+		}
+		node.PredecessorID = &NodeAddress{
+			Id:      allNodes[(i-1+len(allNodes))%len(allNodes)].Id,
+			Address: address_list[(i-1+len(allNodes))%len(allNodes)],
 		}
 	}
 
