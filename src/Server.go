@@ -165,7 +165,7 @@ func httpReq(url string) (*http.Response, error) {
 	return client.Get(url)
 }
 
-func forwardGetStorageRequest(w http.ResponseWriter, address string, key string, value string) {
+func forwardPutStorageRequest(w http.ResponseWriter, address string, key string, value string) {
 	// Format the URL
 	url := fmt.Sprintf("http://%s/storage/%s", address, key)
 
@@ -279,13 +279,13 @@ func storageHandler(w http.ResponseWriter, r *http.Request) {
 			// If the hashed key is in range of the successor node
 			if int(hashedKey) <= serverInstance.node.SuccessorID.Id {
 				// Forward to the successor node
-				forwardGetStorageRequest(w, serverInstance.node.SuccessorID.Address, key, value)
+				forwardPutStorageRequest(w, serverInstance.node.SuccessorID.Address, key, value)
 				return
 			}
 
 			//If not in range of the successor node, find the correct successor node
 			successor := serverInstance.findSuccessor(int(hashedKey))
-			forwardGetStorageRequest(w, successor.Address, key, value)
+			forwardPutStorageRequest(w, successor.Address, key, value)
 		}
 	}
 }
