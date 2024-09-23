@@ -92,7 +92,7 @@ func hash(input string) int {
 	hash := sha256.Sum256([]byte(input))
 
 	// Convert the first 8 bytes of the hash to a uint64
-	hashedValue :=binary.BigEndian.Uint64(hash[:8])
+	hashedValue := binary.BigEndian.Uint64(hash[:8])
 
 	// Apply modulo 2^n to restrict the result between 0 and 2^n - 1
 	return int(hashedValue % uint64(1<<keyIdentifierSpace))
@@ -190,6 +190,7 @@ func httpReq(url string) (*http.Response, error) {
 }
 
 func forwardPutStorageRequest(w http.ResponseWriter, address string, key string, value string) {
+
 	// Format the URL
 	url := fmt.Sprintf("http://%s/storage/%s", address, key)
 
@@ -214,17 +215,17 @@ func forwardPutStorageRequest(w http.ResponseWriter, address string, key string,
 		http.Error(w, "Error forwarding request to successor node", http.StatusInternalServerError)
 	}
 
-	io.Copy(w, resp.Body)
+	// io.Copy(w, resp.Body)
 }
 
 // GET: Returns HTTP code 200, with value, if <key> exists in the DHT. Returns HTTP code 404, if <key> does not exist in the DHT.
 // PUT: Returns HTTP code 200. Assumed that <value> is persisted
 func storageHandler(w http.ResponseWriter, r *http.Request) {
 	start := time.Now() // Start timing the request
+	s := serverInstance
 
 	if r.Method == "GET" {
 
-		s := serverInstance
 		key := strings.TrimPrefix(r.URL.Path, "/storage/")
 		keyInt := hash(key)
 
@@ -232,7 +233,7 @@ func storageHandler(w http.ResponseWriter, r *http.Request) {
 
 		if keyInt < 0 || keyInt >= 1<<keyIdentifierSpace {
 			log.Printf("Request %s - Invalid key: %d out of bounds\n", r.URL.Path, keyInt)
-			w.WriteHeader(http.StatusBadRequest)
+			w.WriteHeader(http.StatusNotFound)
 			return
 		}
 
@@ -306,8 +307,15 @@ func storageHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	} else if r.Method == "PUT" {
+
 		key := strings.TrimPrefix(r.URL.Path, "/storage/")
-		hashedKey := hash(key)
+		keyInt := hash(key)
+
+		if keyInt < 0 || keyInt >= 1<<keyIdentifierSpace {
+			log.Printf("Request %s - Invalid key: %d out of bounds\n", r.URL.Path, keyInt)
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
 
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
@@ -319,61 +327,134 @@ func storageHandler(w http.ResponseWriter, r *http.Request) {
 
 		value := string(body)
 
-		// Check if the hashed key is within the range of the current node
-		if hashedKey <= serverInstance.node.Id && hashedKey > serverInstance.node.PredecessorID.Id {
-			// If the key already exists in the storage, return 403 Forbidden
-			if _, exists := serverInstance.storage[key]; exists {
+		curr_node := s.node.Id
+		prev_node := s.node.PredecessorID.Id
+
+		// Checking for wrap-around in the ring
+		if prev_node > curr_node {
+			if keyInt <= curr_node || keyInt > prev_node {
+
+				// Check local storage
+				_, ok := s.storage[key]
+				if ok {
+					w.WriteHeader(http.StatusForbidden)
+					return
+				} else {
+					s.storage[key] = value
+					w.WriteHeader(http.StatusOK)
+					return
+				}
+
+			}
+		} else if keyInt > prev_node && keyInt <= curr_node {
+
+			_, ok := s.storage[key]
+			if ok {
 				w.WriteHeader(http.StatusForbidden)
-				w.Header().Set("Content-Type", "text/plain")
+				return
+			} else {
+				s.storage[key] = value
+				w.WriteHeader(http.StatusOK)
 				return
 			}
-
-			// If not, add the key to the storage
-			serverInstance.storage[key] = value
-			w.WriteHeader(http.StatusOK)
-			return
-		} else if hashedKey > serverInstance.node.Id {
-			// If the hashed key is in range of the successor node
-			if hashedKey <= serverInstance.node.SuccessorID.Id {
-				// Forward to the successor node
-				forwardPutStorageRequest(w, serverInstance.node.SuccessorID.Address, key, value)
-				return
-			}
-
-			//If not in range of the successor node, find the correct successor node
-			successor := serverInstance.findSuccessor(hashedKey)
-			forwardPutStorageRequest(w, successor.Address, key, value)
 		}
+
+		successor := s.findSuccessor(keyInt)
+		url := fmt.Sprintf("http://%s/storage/%s", successor.Address, key)
+
+		// Forward the request to the given node
+		req, err := http.NewRequest("PUT", url, strings.NewReader(value))
+		if err != nil {
+			http.Error(w, "Error creating request", http.StatusInternalServerError)
+			return
+		}
+
+		client := &http.Client{Timeout: 10 * time.Second}
+		resp, err := client.Do(req)
+		if err != nil {
+			http.Error(w, "Error connecting to successor node", http.StatusInternalServerError)
+			return
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode == http.StatusOK {
+			w.WriteHeader(http.StatusOK)
+		} else {
+			http.Error(w, "Error forwarding request to successor node", http.StatusInternalServerError)
+		}
+
+		serverInstance.storage[key] = value
+		w.WriteHeader(http.StatusOK)
+		return
+
+		// key := strings.TrimPrefix(r.URL.Path, "/storage/")
+		// hashedKey := hash(key)
+
+		// body, err := io.ReadAll(r.Body)
+		// if err != nil {
+		// 	fmt.Println("Error reading body:", err)
+		// 	w.WriteHeader(http.StatusInternalServerError)
+		// 	return
+		// }
+		// defer r.Body.Close()
+
+		// value := string(body)
+
+		// Check if the hashed key is within the range of the current node
+
+		// // Check if the hashed key is within the range of the current node
+		// if hashedKey <= serverInstance.node.Id && hashedKey > serverInstance.node.PredecessorID.Id {
+		// 	// If the key already exists in the storage, return 403 Forbidden
+		// 	if _, exists := serverInstance.storage[key]; exists {
+		// 		w.WriteHeader(http.StatusForbidden)
+		// 		w.Header().Set("Content-Type", "text/plain")
+		// 		return
+		// 	}
+
+		// 	// If not, add the key to the storage
+		// 	serverInstance.storage[key] = value
+		// 	w.WriteHeader(http.StatusOK)
+		// 	return
+		// } else if hashedKey > serverInstance.node.Id {
+		// 	// If the hashed key is in range of the successor node
+		// 	if hashedKey <= serverInstance.node.SuccessorID.Id {
+		// 		// Forward to the successor node
+		// 		forwardPutStorageRequest(w, serverInstance.node.SuccessorID.Address, key, value)
+		// 		return
+		// 	}
+
+		// 	//If not in range of the successor node, find the correct successor node
+		// 	successor := serverInstance.findSuccessor(hashedKey)
+		// 	forwardPutStorageRequest(w, successor.Address, key, value)
+		// }
 	}
 }
 
 // Returns HTTP code 200, with list of known nodes, as a JSON array of strings.
 func networkHandler(w http.ResponseWriter, r *http.Request) {
-    if r.Method == "GET" {
-        // Collect known node addresses into a list
-        nodes := make([]string, 0)
-        for _, node := range serverInstance.node.FingerTable {
-            nodes = append(nodes, node.SuccessorID.Address)
-        }
+	if r.Method == "GET" {
+		// Collect known node addresses into a list
+		nodes := make([]string, 0)
+		for _, node := range serverInstance.node.FingerTable {
+			nodes = append(nodes, node.SuccessorID.Address)
+		}
 
-        // Convert the list of node addresses to JSON
-        jsonData, err := json.Marshal(nodes)
-        if err != nil {
-            w.WriteHeader(http.StatusInternalServerError)
-            w.Write([]byte("Error encoding JSON"))
-            return
-        }
+		// Convert the list of node addresses to JSON
+		jsonData, err := json.Marshal(nodes)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("Error encoding JSON"))
+			return
+		}
 
-        // Set content type and return the JSON data
-        w.Header().Set("Content-Type", "application/json")
-        w.WriteHeader(http.StatusOK)
-        w.Write(jsonData)
-    } else {
-        w.WriteHeader(http.StatusMethodNotAllowed)
-    }
+		// Set content type and return the JSON data
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write(jsonData)
+	} else {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
 }
-
-
 
 func helloworldHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
