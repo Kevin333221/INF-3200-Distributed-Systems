@@ -242,6 +242,7 @@ def get_nonexistent_key(nodes):
 def main(args):
 
     nodes = set(args.nodes)
+    print(f"Nodes: {nodes}")
     nodes |= walk_neighbours(args.nodes)
     nodes = list(nodes)
     print("%d nodes registered: %s" % (len(nodes), ", ".join(nodes)))

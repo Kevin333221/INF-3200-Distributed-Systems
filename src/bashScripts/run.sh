@@ -44,7 +44,8 @@ node_list="["
 
 cd ../DeployServers
 
-address_list="["
+go_list="["
+addr_list=""
 
 counter=0
 while [[ $counter -lt $amount_nodes ]]; do
@@ -57,18 +58,19 @@ while [[ $counter -lt $amount_nodes ]]; do
     nodePort="$node:$port"
 
     # Add node to node list
-    address_list+="\"$nodePort\","
+    go_list+="\"$nodePort\","
+    addr_list+="$nodePort "
 
     counter=$((counter + 1))
 done
 
-address_list=${address_list::-1}
-address_list+="]"
+go_list=${go_list::-1}
+go_list+="]"
 
-echo $address_list
+echo $addr_list
 
 # Get node IDs
-go build && ./DeployServers $2 $address_list $amount_nodes
+go build && ./DeployServers $2 $go_list $amount_nodes
 
 python3 ../DeployServers/get_ids.py
 

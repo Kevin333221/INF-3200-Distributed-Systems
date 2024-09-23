@@ -145,7 +145,7 @@ func (s *Server) findSuccessor(key int) *NodeAddress {
 	}
 
 	// If no closer predecessor is found, return the successor as fallback
-	return s.node.FingerTable[len(s.node.FingerTable)-1].SuccessorID
+	return s.node.FingerTable[0].SuccessorID
 }
 
 func (s *Server) findClosestPredecessor(key int) *NodeAddress {
@@ -158,7 +158,7 @@ func (s *Server) findClosestPredecessor(key int) *NodeAddress {
 
 		// Check if the finger points to a node that is a valid predecessor of the key
 		// and that the finger node is closer to the key than the current node
-		if isBetweenInclusive(s.node.Id, finger.SuccessorID.Id, key) {
+		if isBetween(s.node.Id, finger.SuccessorID.Id, key) {
 			fmt.Printf("Found closest predecessor: %d\n", finger.SuccessorID.Id)
 			return finger.SuccessorID
 		}
@@ -247,11 +247,10 @@ func storageHandler(w http.ResponseWriter, r *http.Request) {
 				value, ok := s.storage[key]
 				if ok {
 					w.WriteHeader(http.StatusOK)
-					w.Write([]byte(fmt.Sprintf("Found value: %s\n", value)))
+					w.Write([]byte(value))
 					return
 				} else {
 					w.WriteHeader(http.StatusNotFound)
-					w.Write([]byte("Key not found\n"))
 					return
 				}
 			}
@@ -260,11 +259,10 @@ func storageHandler(w http.ResponseWriter, r *http.Request) {
 			value, ok := s.storage[key]
 			if ok {
 				w.WriteHeader(http.StatusOK)
-				w.Write([]byte("Found value: " + value + "\n"))
+				w.Write([]byte(value))
 				return
 			} else {
 				w.WriteHeader(http.StatusNotFound)
-				w.Write([]byte("Key not found\n"))
 				return
 			}
 		}
@@ -296,8 +294,9 @@ func storageHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		} else if resp.StatusCode == http.StatusNotFound {
 			log.Printf("Request %s - Key not found on: %d", r.URL.Path, successor.Id)
+
 			w.WriteHeader(http.StatusNotFound)
-			w.Write([]byte("Key not found\n"))
+
 			log.Printf("Request %s - Time taken: %v", r.URL.Path, time.Since(start))
 			return
 		} else {
@@ -326,14 +325,12 @@ func storageHandler(w http.ResponseWriter, r *http.Request) {
 			if _, exists := serverInstance.storage[key]; exists {
 				w.WriteHeader(http.StatusForbidden)
 				w.Header().Set("Content-Type", "text/plain")
-				w.Write([]byte("Key already exists in system\n"))
 				return
 			}
 
 			// If not, add the key to the storage
 			serverInstance.storage[key] = value
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(fmt.Sprintf("Key '%s' added to storage with hash: %d\n", key, hashedKey)))
 			return
 		} else if hashedKey > serverInstance.node.Id {
 			// If the hashed key is in range of the successor node
@@ -350,24 +347,33 @@ func storageHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// Returns HTTP code 200, with list of known nodes, as JSON.
+// Returns HTTP code 200, with list of known nodes, as a JSON array of strings.
 func networkHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method == "GET" {
-		// Return list of known nodes
-		w.WriteHeader(http.StatusOK)
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(
-			"Known nodes:\n",
-		))
-		for _, node := range serverInstance.node.FingerTable {
-			w.Write([]byte(fmt.Sprintf("NodeID: %d\n", node.SuccessorID.Id)))
-		}
+    if r.Method == "GET" {
+        // Collect known node addresses into a list
+        nodes := make([]string, 0)
+        for _, node := range serverInstance.node.FingerTable {
+            nodes = append(nodes, node.SuccessorID.Address)
+        }
 
-	} else {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
-	}
+        // Convert the list of node addresses to JSON
+        jsonData, err := json.Marshal(nodes)
+        if err != nil {
+            w.WriteHeader(http.StatusInternalServerError)
+            w.Write([]byte("Error encoding JSON"))
+            return
+        }
+
+        // Set content type and return the JSON data
+        w.Header().Set("Content-Type", "application/json")
+        w.WriteHeader(http.StatusOK)
+        w.Write(jsonData)
+    } else {
+        w.WriteHeader(http.StatusMethodNotAllowed)
+    }
 }
+
+
 
 func helloworldHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
