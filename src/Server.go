@@ -224,18 +224,18 @@ func storageHandler(w http.ResponseWriter, r *http.Request) {
 
 		w.WriteHeader(http.StatusTemporaryRedirect)
 		w.Header().Set("Content-Type", "text/plain")
-		w.Write([]byte("Redirecting to: " + url))
+		w.Write([]byte(fmt.Sprintf("Redirecting to: %s\n", url)))
 
 		resp, err := httpReq(url)
 		if err != nil {
-			http.Error(w, "Error connecting to successor node", http.StatusInternalServerError)
+			http.Error(w, "Error connecting to successor node\n", http.StatusInternalServerError)
 			return
 		}
 
 		if resp.StatusCode == http.StatusOK {
 			body, err := io.ReadAll(resp.Body)
 			if err != nil {
-				http.Error(w, "Error reading response from successor node", http.StatusInternalServerError)
+				http.Error(w, "Error reading response from successor node\n", http.StatusInternalServerError)
 				return
 			}
 			w.WriteHeader(http.StatusOK)
@@ -267,7 +267,7 @@ func storageHandler(w http.ResponseWriter, r *http.Request) {
 			if _, exists := serverInstance.storage[key]; exists {
 				w.WriteHeader(http.StatusForbidden)
 				w.Header().Set("Content-Type", "text/plain")
-				w.Write([]byte("Key already exists in system"))
+				w.Write([]byte("Key already exists in system\n"))
 				return
 			}
 
