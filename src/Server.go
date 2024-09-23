@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -64,19 +65,7 @@ func InitServer(node *Node) {
 		Handler: initMux(),
 	}
 
-	if serverInstance.node.Id == 4 {
-		serverInstance.storage["1"] = "Hello, World!"
-		serverInstance.storage["2"] = "Hello, World! 2"
-	}
-
 	fmt.Printf("\nServer initialized at: %s and node ID %d\n", serverInstance.hostname+":"+serverInstance.port, serverInstance.node.Id)
-
-	// // Looping through the finger table of the node
-	// for _, finger := range serverInstance.node.FingerTable {
-	// 	fmt.Printf("Finger start: %d, Finger successor ID: %d\n", finger.Start, finger.SuccessorID.Id)
-	// }
-
-	// fmt.Printf("\n")
 
 	// Channel to listen for shutdown signal (interrupts or timer)
 	shutdownChan := make(chan os.Signal, 1)
@@ -106,8 +95,7 @@ func hash(input string) int {
 	hashedValue := binary.BigEndian.Uint64(hash[:8])
 
 	// Apply modulo 2^n to restrict the result between 0 and 2^n - 1
-	maxValue := uint64(1<<keyIdentifierSpace) - 1
-	return int(hashedValue % maxValue)
+	return int(hashedValue % uint64(1<<keyIdentifierSpace))
 }
 
 func initMux() *http.ServeMux {
@@ -143,21 +131,50 @@ func startServerShutdownTimer(shutdownChan chan os.Signal) {
 }
 
 func (s *Server) findSuccessor(key int) *NodeAddress {
-
-	// Check if the key is in the finger table
-	for _, finger := range s.node.FingerTable {
-		if s.node.Id > finger.SuccessorID.Id {
-			if key > s.node.Id || key <= finger.SuccessorID.Id {
-				return finger.SuccessorID
-			}
-		} else if key <= finger.SuccessorID.Id {
-			return finger.SuccessorID
-		}
-
+	// First, check if the key falls between the current node and its immediate successor
+	if isBetweenInclusive(s.node.Id, key, s.node.SuccessorID.Id) {
+		return s.node.SuccessorID
 	}
 
-	// If the key is not in the finger table, return the last entry
+	// Otherwise, look in the finger table for the closest predecessor
+	closestPredecessor := s.findClosestPredecessor(key)
+
+	// Recursively call findSuccessor on the closest predecessor if it's not nil
+	if closestPredecessor != nil {
+		return closestPredecessor
+	}
+
+	// If no closer predecessor is found, return the successor as fallback
 	return s.node.FingerTable[len(s.node.FingerTable)-1].SuccessorID
+}
+
+func (s *Server) findClosestPredecessor(key int) *NodeAddress {
+	for i := len(s.node.FingerTable) - 1; i >= 0; i-- {
+		finger := s.node.FingerTable[i]
+		// Check if the finger points to a node that is a valid predecessor of the key
+		// and that the finger node is closer to the key than the current node
+		if isBetween(s.node.Id, finger.SuccessorID.Id, key) && finger.SuccessorID.Id != s.node.Id {
+			return finger.SuccessorID
+		}
+	}
+	// If no predecessor is found, return nil
+	return nil
+}
+
+// Helper function to check if 'key' is in the interval (n1, n2] with wraparound handling
+func isBetweenInclusive(n1, key, n2 int) bool {
+	if n1 < n2 {
+		return key > n1 && key <= n2
+	}
+	return key > n1 || key <= n2
+}
+
+// Helper function to check if 'key' is in the interval (n1, n2) with wraparound handling
+func isBetween(n1, n2, key int) bool {
+	if n1 < n2 {
+		return key > n1 && key < n2
+	}
+	return key > n1 || key < n2
 }
 
 func httpReq(url string) (*http.Response, error) {
@@ -197,57 +214,92 @@ func forwardPutStorageRequest(w http.ResponseWriter, address string, key string,
 // GET: Returns HTTP code 200, with value, if <key> exists in the DHT. Returns HTTP code 404, if <key> does not exist in the DHT.
 // PUT: Returns HTTP code 200. Assumed that <value> is persisted
 func storageHandler(w http.ResponseWriter, r *http.Request) {
+	start := time.Now() // Start timing the request
 
 	if r.Method == "GET" {
-		key := strings.TrimPrefix(r.URL.Path, "/storage/")
-		hashedKey := int(hash(key))
 
-		if serverInstance.node.Id > serverInstance.node.PredecessorID.Id {
-			if hashedKey <= serverInstance.node.Id || hashedKey > serverInstance.node.PredecessorID.Id {
-				// Key must exist in my storage DHT
-				value, ok := serverInstance.storage[key]
+		s := serverInstance
+		key := strings.TrimPrefix(r.URL.Path, "/storage/")
+		keyInt := hash(key)
+
+		log.Printf("Looking up key %d in node %d for request %s\n", keyInt, s.node.Id, r.URL.Path)
+
+		if keyInt < 0 || keyInt >= 1<<keyIdentifierSpace {
+			log.Printf("Request %s - Invalid key: %d out of bounds\n", r.URL.Path, keyInt)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		curr_node := s.node.Id
+		prev_node := s.node.PredecessorID.Id
+
+		// Checking for wrap-around in the ring
+		if prev_node > curr_node {
+			if keyInt <= curr_node || keyInt > prev_node {
+
+				// Check local storage
+				value, ok := s.storage[strconv.Itoa(keyInt)]
 				if ok {
 					w.WriteHeader(http.StatusOK)
-					w.Header().Set("Content-Type", "text/plain")
-					w.Write([]byte(value))
+					w.Write([]byte("Found value: " + value + "\n"))
 					return
 				} else {
 					w.WriteHeader(http.StatusNotFound)
+					w.Write([]byte("Key not found\n"))
 					return
 				}
 			}
+		} else if keyInt > prev_node && keyInt <= curr_node {
+
+			value, ok := s.storage[strconv.Itoa(keyInt)]
+			if ok {
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte("Found value: " + value + "\n"))
+				return
+			} else {
+				w.WriteHeader(http.StatusNotFound)
+				w.Write([]byte("Key not found\n"))
+				return
+			}
 		}
 
-		// Find the successor node for the key
-		successor := serverInstance.findSuccessor(hashedKey)
-		fmt.Printf("Found successor node: %d\n", successor.Id)
-		url := fmt.Sprintf("http://%s/storage/%d", successor.Address, hashedKey)
+		successor := s.findSuccessor(keyInt)
+		url := fmt.Sprintf("http://%s/storage/%s", successor.Address, key)
 
-		w.WriteHeader(http.StatusTemporaryRedirect)
-		w.Header().Set("Content-Type", "text/plain")
-		w.Write([]byte(fmt.Sprintf("Redirecting to: %s\n", url)))
+		time.Sleep(2 * time.Second) // Simulate network delay
 
 		resp, err := httpReq(url)
 		if err != nil {
-			http.Error(w, "Error connecting to successor node\n", http.StatusInternalServerError)
+			log.Printf("Request %s - Error connecting to successor node: %v", r.URL.Path, err)
+			http.Error(w, "Error connecting to successor node", http.StatusInternalServerError)
 			return
 		}
 
 		if resp.StatusCode == http.StatusOK {
+			log.Printf("Request %s - Successfully forwarded to successor", r.URL.Path)
 			body, err := io.ReadAll(resp.Body)
 			if err != nil {
-				http.Error(w, "Error reading response from successor node\n", http.StatusInternalServerError)
+				log.Printf("Request %s - Error reading response from successor: %v", r.URL.Path, err)
+				http.Error(w, "Error reading response from successor node", http.StatusInternalServerError)
+				log.Printf("Request %s - Time taken: %v", r.URL.Path, time.Since(start))
 				return
 			}
 			w.WriteHeader(http.StatusOK)
-			w.Header().Set("Content-Type", "text/plain")
-			w.Write([]byte("\n" + string(body)))
+			w.Write(body)
+			log.Printf("Request %s - Time taken: %v", r.URL.Path, time.Since(start))
 			return
 		} else if resp.StatusCode == http.StatusNotFound {
+			log.Printf("Request %s - Key not found on successor node", r.URL.Path)
 			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte("Key not found\n"))
+			log.Printf("Request %s - Time taken: %v", r.URL.Path, time.Since(start))
+			return
+		} else {
+			log.Printf("Request %s - Error from successor node", r.URL.Path)
+			http.Error(w, "Error connecting to successor node", http.StatusInternalServerError)
+			log.Printf("Request %s - Time taken: %v", r.URL.Path, time.Since(start))
 			return
 		}
-
 	} else if r.Method == "PUT" {
 		key := strings.TrimPrefix(r.URL.Path, "/storage/")
 		hashedKey := hash(key)
@@ -322,6 +374,13 @@ func helloworldHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+
+	// logFile, err := os.OpenFile("dht_performance.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
+	// defer logFile.Close()
+	// log.SetOutput(logFile)
 
 	nodeID, err := strconv.Atoi(os.Args[1])
 
