@@ -149,16 +149,23 @@ func (s *Server) findSuccessor(key int) *NodeAddress {
 }
 
 func (s *Server) findClosestPredecessor(key int) *NodeAddress {
+
+	// Iterate through the finger table in reverse order
 	for i := len(s.node.FingerTable) - 1; i >= 0; i-- {
 		finger := s.node.FingerTable[i]
+
+		fmt.Printf("Checking finger %d: %d\n", i, finger.SuccessorID.Id)
+
 		// Check if the finger points to a node that is a valid predecessor of the key
 		// and that the finger node is closer to the key than the current node
-		if isBetween(s.node.Id, finger.SuccessorID.Id, key) && finger.SuccessorID.Id != s.node.Id {
+		if isBetween(s.node.Id, finger.SuccessorID.Id, key) {
+			fmt.Printf("Found closest predecessor: %d\n", finger.SuccessorID.Id)
 			return finger.SuccessorID
 		}
 	}
-	// If no predecessor is found, return nil
-	return nil
+
+	// Return the closest valid predecessor found
+	return s.node.FingerTable[len(s.node.FingerTable)-1].SuccessorID
 }
 
 // Helper function to check if 'key' is in the interval (n1, n2] with wraparound handling
@@ -170,7 +177,7 @@ func isBetweenInclusive(n1, key, n2 int) bool {
 }
 
 // Helper function to check if 'key' is in the interval (n1, n2) with wraparound handling
-func isBetween(n1, n2, key int) bool {
+func isBetween(n1, key, n2 int) bool {
 	if n1 < n2 {
 		return key > n1 && key < n2
 	}
@@ -209,7 +216,7 @@ func storageHandler(w http.ResponseWriter, r *http.Request) {
 			if keyInt <= curr_node || keyInt > prev_node {
 
 				// Check local storage
-				value, ok := s.storage[strconv.Itoa(keyInt)]
+				value, ok := s.storage[key]
 				if ok {
 					w.WriteHeader(http.StatusOK)
 					w.Write([]byte("Found value: " + value + "\n"))
@@ -222,7 +229,7 @@ func storageHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		} else if keyInt > prev_node && keyInt <= curr_node {
 
-			value, ok := s.storage[strconv.Itoa(keyInt)]
+			value, ok := s.storage[key]
 			if ok {
 				w.WriteHeader(http.StatusOK)
 				w.Write([]byte("Found value: " + value + "\n"))
@@ -235,6 +242,9 @@ func storageHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		successor := s.findSuccessor(keyInt)
+
+		log.Printf("Request %s - Forwarding to successor %d", r.URL.Path, successor.Id)
+
 		url := fmt.Sprintf("http://%s/storage/%s", successor.Address, key)
 
 		time.Sleep(2 * time.Second) // Simulate network delay
