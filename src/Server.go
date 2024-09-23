@@ -243,7 +243,7 @@ func storageHandler(w http.ResponseWriter, r *http.Request) {
 				value, ok := s.storage[key]
 				if ok {
 					w.WriteHeader(http.StatusOK)
-					w.Write([]byte("Found value: " + value + "\n"))
+					w.Write([]byte(fmt.Sprintf("Found value: %s\n", value)))
 					return
 				} else {
 					w.WriteHeader(http.StatusNotFound)
@@ -329,6 +329,7 @@ func storageHandler(w http.ResponseWriter, r *http.Request) {
 			// If not, add the key to the storage
 			serverInstance.storage[key] = value
 			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(fmt.Sprintf("Key %s added to storage with hash: %d\n", key, hashedKey)))
 			return
 		} else if hashedKey > serverInstance.node.Id {
 			// If the hashed key is in range of the successor node
