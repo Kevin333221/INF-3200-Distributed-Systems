@@ -92,12 +92,10 @@ func hash(input string) int {
 	hash := sha256.Sum256([]byte(input))
 
 	// Convert the first 8 bytes of the hash to a uint64
-	binary.BigEndian.Uint64(hash[:8])
+	hashedValue :=binary.BigEndian.Uint64(hash[:8])
 
 	// Apply modulo 2^n to restrict the result between 0 and 2^n - 1
-	//return int(hashedValue % uint64(1<<keyIdentifierSpace))
-
-	return 5;
+	return int(hashedValue % uint64(1<<keyIdentifierSpace))
 }
 
 func initMux() *http.ServeMux {
@@ -160,7 +158,7 @@ func (s *Server) findClosestPredecessor(key int) *NodeAddress {
 
 		// Check if the finger points to a node that is a valid predecessor of the key
 		// and that the finger node is closer to the key than the current node
-		if isBetween(s.node.Id, finger.SuccessorID.Id, key) {
+		if isBetweenInclusive(s.node.Id, finger.SuccessorID.Id, key) {
 			fmt.Printf("Found closest predecessor: %d\n", finger.SuccessorID.Id)
 			return finger.SuccessorID
 		}
@@ -216,7 +214,6 @@ func forwardPutStorageRequest(w http.ResponseWriter, address string, key string,
 		http.Error(w, "Error forwarding request to successor node", http.StatusInternalServerError)
 	}
 
-	w.WriteHeader(resp.StatusCode)
 	io.Copy(w, resp.Body)
 }
 
@@ -277,9 +274,6 @@ func storageHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Request %s - Forwarding to successor %d", r.URL.Path, successor.Id)
 
 		url := fmt.Sprintf("http://%s/storage/%s", successor.Address, key)
-
-		time.Sleep(2 * time.Second) // Simulate network delay
-
 		resp, err := httpReq(url)
 		if err != nil {
 			log.Printf("Request %s - Error connecting to successor node: %v", r.URL.Path, err)
@@ -288,7 +282,7 @@ func storageHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if resp.StatusCode == http.StatusOK {
-			log.Printf("Request %s - Successfully forwarded to successor", r.URL.Path)
+			log.Printf("Request %s - Successfully forwarded to: %s with ID %d", r.URL.Path, successor.Address, successor.Id)
 			body, err := io.ReadAll(resp.Body)
 			if err != nil {
 				log.Printf("Request %s - Error reading response from successor: %v", r.URL.Path, err)
@@ -301,7 +295,7 @@ func storageHandler(w http.ResponseWriter, r *http.Request) {
 			log.Printf("Request %s - Time taken: %v", r.URL.Path, time.Since(start))
 			return
 		} else if resp.StatusCode == http.StatusNotFound {
-			log.Printf("Request %s - Key not found on successor node", r.URL.Path)
+			log.Printf("Request %s - Key not found on: %d", r.URL.Path, successor.Id)
 			w.WriteHeader(http.StatusNotFound)
 			w.Write([]byte("Key not found\n"))
 			log.Printf("Request %s - Time taken: %v", r.URL.Path, time.Since(start))
@@ -339,7 +333,7 @@ func storageHandler(w http.ResponseWriter, r *http.Request) {
 			// If not, add the key to the storage
 			serverInstance.storage[key] = value
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(fmt.Sprintf("Key %s added to storage with hash: %d\n", key, hashedKey)))
+			w.Write([]byte(fmt.Sprintf("Key '%s' added to storage with hash: %d\n", key, hashedKey)))
 			return
 		} else if hashedKey > serverInstance.node.Id {
 			// If the hashed key is in range of the successor node
