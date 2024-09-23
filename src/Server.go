@@ -97,7 +97,7 @@ func InitServer(node *Node) {
 	fmt.Println("Server exiting")
 }
 
-func hash(input string) uint64 {
+func hash(input string) int {
 
 	// Hash the input using SHA-256
 	hash := sha256.Sum256([]byte(input))
@@ -107,7 +107,7 @@ func hash(input string) uint64 {
 
 	// Apply modulo 2^n to restrict the result between 0 and 2^n - 1
 	maxValue := uint64(1<<keyIdentifierSpace) - 1
-	return hashedValue % maxValue
+	return int(hashedValue % maxValue)
 }
 
 func initMux() *http.ServeMux {
@@ -262,7 +262,7 @@ func storageHandler(w http.ResponseWriter, r *http.Request) {
 		value := string(body)
 
 		// Check if the hashed key is within the range of the current node
-		if int(hashedKey) <= serverInstance.node.Id && int(hashedKey) > serverInstance.node.PredecessorID.Id {
+		if hashedKey <= serverInstance.node.Id && hashedKey > serverInstance.node.PredecessorID.Id {
 			// If the key already exists in the storage, return 403 Forbidden
 			if _, exists := serverInstance.storage[key]; exists {
 				w.WriteHeader(http.StatusForbidden)
@@ -275,16 +275,16 @@ func storageHandler(w http.ResponseWriter, r *http.Request) {
 			serverInstance.storage[key] = value
 			w.WriteHeader(http.StatusOK)
 			return
-		} else if int(hashedKey) > serverInstance.node.Id {
+		} else if hashedKey > serverInstance.node.Id {
 			// If the hashed key is in range of the successor node
-			if int(hashedKey) <= serverInstance.node.SuccessorID.Id {
+			if hashedKey <= serverInstance.node.SuccessorID.Id {
 				// Forward to the successor node
 				forwardPutStorageRequest(w, serverInstance.node.SuccessorID.Address, key, value)
 				return
 			}
 
 			//If not in range of the successor node, find the correct successor node
-			successor := serverInstance.findSuccessor(int(hashedKey))
+			successor := serverInstance.findSuccessor(hashedKey)
 			forwardPutStorageRequest(w, successor.Address, key, value)
 		}
 	}
