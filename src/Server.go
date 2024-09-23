@@ -220,6 +220,7 @@ func storageHandler(w http.ResponseWriter, r *http.Request) {
 
 		// Find the successor node for the key
 		successor := serverInstance.findSuccessor(hashedKey)
+		fmt.Printf("Found successor node: %d\n", successor.Id)
 		url := fmt.Sprintf("http://%s/storage/%d", successor.Address, hashedKey)
 
 		w.WriteHeader(http.StatusTemporaryRedirect)
