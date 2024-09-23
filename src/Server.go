@@ -92,10 +92,12 @@ func hash(input string) int {
 	hash := sha256.Sum256([]byte(input))
 
 	// Convert the first 8 bytes of the hash to a uint64
-	hashedValue := binary.BigEndian.Uint64(hash[:8])
+	binary.BigEndian.Uint64(hash[:8])
 
 	// Apply modulo 2^n to restrict the result between 0 and 2^n - 1
-	return int(hashedValue % uint64(1<<keyIdentifierSpace))
+	//return int(hashedValue % uint64(1<<keyIdentifierSpace))
+
+	return 5;
 }
 
 func initMux() *http.ServeMux {
@@ -238,7 +240,7 @@ func storageHandler(w http.ResponseWriter, r *http.Request) {
 			if keyInt <= curr_node || keyInt > prev_node {
 
 				// Check local storage
-				value, ok := s.storage[strconv.Itoa(keyInt)]
+				value, ok := s.storage[key]
 				if ok {
 					w.WriteHeader(http.StatusOK)
 					w.Write([]byte("Found value: " + value + "\n"))
@@ -251,7 +253,7 @@ func storageHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		} else if keyInt > prev_node && keyInt <= curr_node {
 
-			value, ok := s.storage[strconv.Itoa(keyInt)]
+			value, ok := s.storage[key]
 			if ok {
 				w.WriteHeader(http.StatusOK)
 				w.Write([]byte("Found value: " + value + "\n"))
