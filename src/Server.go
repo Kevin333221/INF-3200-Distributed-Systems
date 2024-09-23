@@ -64,9 +64,9 @@ func InitServer(node *Node) {
 		Handler: initMux(),
 	}
 
-	if serverInstance.node.Id == 0 {
-		//serverInstance.storage["hei"] = "Hello, World!"
-		//serverInstance.storage["hello"] = "Hello, World! 2"
+	if serverInstance.node.Id == 4 {
+		serverInstance.storage["1"] = "Hello, World!"
+		serverInstance.storage["2"] = "Hello, World! 2"
 	}
 
 	fmt.Printf("\nServer initialized at: %s and node ID %d\n", serverInstance.hostname+":"+serverInstance.port, serverInstance.node.Id)
