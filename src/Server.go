@@ -194,8 +194,6 @@ func storageHandler(w http.ResponseWriter, r *http.Request) {
 		key := strings.TrimPrefix(r.URL.Path, "/storage/")
 		keyInt := hash(key)
 
-		fmt.Printf("Key: %s, Hash: %d\n", key, keyInt)
-
 		// Check if the key is within the valid range
 		if keyInt < 0 || keyInt >= 1<<keyIdentifierSpace || fmt.Sprintf("%T", keyInt) != "int" {
 			w.WriteHeader(http.StatusNotFound)

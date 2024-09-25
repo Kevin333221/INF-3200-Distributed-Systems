@@ -94,12 +94,28 @@ if __name__ == "__main__":
     addresses = sys.argv[1:]
     amount_of_addresses = len(addresses)
     test_amount = 100
-
-    print("Success!") if not check_addresses(addresses) else print("Failure")
-    print()
-
     keys = [os.urandom(8).hex() for _ in range(test_amount)]
-    print("Success!") if not check_PUT_requests(addresses, keys) else print("Failure")
-    print()
 
-    print("Success!") if not check_GET_requests(addresses, keys) else print("Failure")
+    # print("Success!") if not check_addresses(addresses) else print("Failure")
+    # print()
+
+    # print("Success!") if not check_PUT_requests(addresses, keys) else print("Failure")
+    # print()
+
+    # print("Success!") if not check_GET_requests(addresses, keys) else print("Failure")
+
+    start_time = time.time()
+    check_PUT_requests(addresses, keys)
+    total_time = time.time() - start_time
+    print(f"PUT time: {total_time:.2f} seconds")
+    
+    with open("PUT_ALL_log.txt", "a") as f:
+        f.write(f"{amount_of_addresses} {total_time:.2f}\n")
+
+    start_time = time.time()
+    check_GET_requests(addresses, keys)
+    total_time = time.time() - start_time
+    print(f"GET time: {total_time:.2f} seconds")
+
+    with open("GET_ALL_log.txt", "a") as f:
+        f.write(f"{amount_of_addresses} {total_time:.2f}\n")
