@@ -194,6 +194,8 @@ func storageHandler(w http.ResponseWriter, r *http.Request) {
 		key := strings.TrimPrefix(r.URL.Path, "/storage/")
 		keyInt := hash(key)
 
+		fmt.Printf("Key: %s, Hash: %d\n", key, keyInt)
+
 		if keyInt < 0 || keyInt >= 1<<keyIdentifierSpace || fmt.Sprintf("%T", keyInt) != "int" {
 			w.WriteHeader(http.StatusNotFound)
 			return
@@ -201,6 +203,17 @@ func storageHandler(w http.ResponseWriter, r *http.Request) {
 
 		curr_node := s.node.Id
 		prev_node := s.node.PredecessorID.Id
+
+		if curr_node == prev_node {
+			_, ok := s.storage[key]
+			if ok {
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte(s.storage[key]))
+			} else {
+				w.WriteHeader(http.StatusNotFound)
+			}
+			return
+		}
 
 		// Checking for wrap-around in the ring
 		if prev_node > curr_node {
@@ -229,6 +242,18 @@ func storageHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		successor := s.findSuccessor(keyInt)
+
+		if successor.Address == s.node.Address {
+			value, ok := s.storage[key]
+			if ok {
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte(value))
+			} else {
+				w.WriteHeader(http.StatusNotFound)
+			}
+			return
+		}
+
 		url := fmt.Sprintf("http://%s/storage/%s", successor.Address, key)
 
 		client := &http.Client{Timeout: 10 * time.Second}
@@ -280,6 +305,17 @@ func storageHandler(w http.ResponseWriter, r *http.Request) {
 		curr_node := s.node.Id
 		prev_node := s.node.PredecessorID.Id
 
+		if prev_node == curr_node {
+			_, ok := s.storage[key]
+			if ok {
+				w.WriteHeader(http.StatusForbidden)
+			} else {
+				s.storage[key] = value
+				w.WriteHeader(http.StatusOK)
+			}
+			return
+		}
+
 		// Checking for wrap-around in the ring
 		if prev_node > curr_node {
 			if keyInt <= curr_node || keyInt > prev_node {
@@ -307,6 +343,18 @@ func storageHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		successor := s.findSuccessor(keyInt)
+
+		if successor.Address == s.node.Address {
+			_, ok := s.storage[key]
+			if ok {
+				w.WriteHeader(http.StatusForbidden)
+			} else {
+				s.storage[key] = value
+				w.WriteHeader(http.StatusOK)
+			}
+			return
+		}
+
 		url := fmt.Sprintf("http://%s/storage/%s", successor.Address, key)
 
 		// Forward the request to the given node
