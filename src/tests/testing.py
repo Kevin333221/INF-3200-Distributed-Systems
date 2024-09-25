@@ -42,12 +42,13 @@ def check_PUT_requests(addresses, keys):
             response = requests.put(f"http://{address}/storage/{key}", data=f"Hello, World {index}!")
             total_time = (time.time() - start_time) * 1000
 
+            if response.status_code != 200:
+                failed = True
+
+            print(f"\u2714 - {total_time:.2f} ms")
             with open("PUT_log.txt", "a") as f:
                 f.write(f"{len(addresses)} {total_time:.2f}\n")
 
-            print(f"\u2714 - {total_time:.2f} ms")
-            if response.status_code != 200:
-                failed = True
         except Exception as e:
             print(f"\n\u2716 Request to {address} failed: {e}\n")
             failed = True
@@ -74,12 +75,13 @@ def check_GET_requests(addresses, keys):
             response = requests.get(f"http://{address}/storage/{key}")
             total_time = (time.time() - start_time) * 1000
 
+            if response.text != f"Hello, World {index}!":
+                failed = True
+
+            print(f"\u2714 - {total_time:.2f} ms")
             with open("GET_log.txt", "a") as f:
                 f.write(f"{len(addresses)} {total_time:.2f}\n")
 
-            if response.text != f"Hello, World {index}!":
-                failed = True
-            print(f"\u2714 - {total_time:.2f} ms")
         except Exception as e:
             print(f"\n\u2716 Request to {address} failed: {e}\n")
             failed = True
@@ -90,13 +92,13 @@ if __name__ == "__main__":
     
     # Get the list of addresses from the command line arguments one by one
     addresses = sys.argv[1:]
-
     amount_of_addresses = len(addresses)
+    test_amount = 100
 
     print("Success!") if not check_addresses(addresses) else print("Failure")
     print()
 
-    keys = [os.urandom(8).hex() for _ in range(100)]
+    keys = [os.urandom(8).hex() for _ in range(test_amount)]
     print("Success!") if not check_PUT_requests(addresses, keys) else print("Failure")
     print()
 
