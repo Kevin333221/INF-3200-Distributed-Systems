@@ -7,37 +7,42 @@ import matplotlib.pyplot as plt
 
 
 def average_time(file: str) -> dict:
-    """Reads the line from the file and calculates the average time for each node.
+    """Reads the file and calculates the average time and standard deviation for each numer of nodes.
 
     Args:
         file (str): Path to the file containing the time data.
 
     Returns:
-        dict: A dictionary containing the average time for each number of nodes.
+        dict: A dictionary containing the average time and SD for each number of nodes.
     """
-    time_data = defaultdict(lambda: {"time": 0, "count": 0})
+    time_data = defaultdict(lambda: {"times": []})
 
     with open(file, "r", encoding="utf-8") as f:
         for line in f:
             try:
                 node, time = map(float, line.split())
-                time_data[int(node)]["time"] += time
-                time_data[int(node)]["count"] += 1
+                time_data[int(node)]["times"].append(time)
             except ValueError:
                 print(f"Skipping invalid line: {line.strip()}")
                 continue
 
-        average_times = {}
-        for node, data in time_data.items():
-            average_times[node] = round(data["time"] / data["count"], 2)
+    statistics = {}
+    for node, data in time_data.items():
+        avg_time = round(sum(data["times"]) / len(data["times"]), 2)
+        stddev = round(
+            (sum((x - avg_time) ** 2 for x in data["times"]) / len(data["times"]))
+            ** 0.5,
+            2,
+        )
+        statistics[node] = {"average": avg_time, "stddev": stddev}
 
-    return average_times
+    return statistics
 
 
 def make_plot(
-    put_times: dict, get_times: dict, filename: str = "time_plot.pdf"
+    put_stats: dict, get_stats: dict, filename: str = "time_plot.pdf"
 ) -> None:
-    """Creates a plot of the average time for PUT and GET requests.
+    """Creates a plot of the average time and SD for PUT and GET requests.
     Plots are saved in a PDF file.
 
     Args:
@@ -48,12 +53,36 @@ def make_plot(
     Raises:
         ValueError: If there is no data to plot.
     """
-    if len(put_times) == 0 or len(get_times) == 0:
+    if len(put_stats) == 0 or len(get_stats) == 0:
         print("No data to plot.")
         raise ValueError("No data to plot.")
 
-    plt.plot(put_times.keys(), put_times.values(), color="red", label="PUT")
-    plt.plot(get_times.keys(), get_times.values(), color="blue", label="GET")
+    put_nodes = list(put_stats.keys())
+    put_avg = [put_stats[node]["average"] for node in put_nodes]
+    put_stddev = [put_stats[node]["stddev"] for node in put_nodes]
+
+    get_nodes = list(get_stats.keys())
+    get_avg = [get_stats[node]["average"] for node in get_nodes]
+    get_stddev = [get_stats[node]["stddev"] for node in get_nodes]
+
+    plt.errorbar(
+        put_nodes,
+        put_avg,
+        yerr=put_stddev,
+        fmt="-o",
+        color="orange",
+        label="PUT",
+        capsize=10,
+    )
+    plt.errorbar(
+        get_nodes,
+        get_avg,
+        yerr=get_stddev,
+        fmt="-o",
+        color="blue",
+        label="GET",
+        capsize=10,
+    )
 
     plt.xlabel("Number of nodes")
     plt.ylabel("Average time (ms)")
