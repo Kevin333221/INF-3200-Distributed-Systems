@@ -57,16 +57,30 @@ def make_plot(
         print("No data to plot.")
         raise ValueError("No data to plot.")
 
-    put_nodes = list(put_stats.keys())
-    put_avg = [put_stats[node]["average"] for node in put_nodes]
-    put_stddev = [put_stats[node]["stddev"] for node in put_nodes]
+    # Define the original and desired x-axis positions
+    original_nodes = [1, 2, 4, 8, 16]
+    new_positions = list(
+        range(len(original_nodes))
+    )
 
-    get_nodes = list(get_stats.keys())
-    get_avg = [get_stats[node]["average"] for node in get_nodes]
-    get_stddev = [get_stats[node]["stddev"] for node in get_nodes]
+    # Get the values corresponding to the new_positions
+    put_avg = [
+        put_stats[node]["average"] for node in original_nodes if node in put_stats
+    ]
+    put_stddev = [
+        put_stats[node]["stddev"] for node in original_nodes if node in put_stats
+    ]
 
+    get_avg = [
+        get_stats[node]["average"] for node in original_nodes if node in get_stats
+    ]
+    get_stddev = [
+        get_stats[node]["stddev"] for node in original_nodes if node in get_stats
+    ]
+
+    # Plot with new x positions
     plt.errorbar(
-        put_nodes,
+        new_positions,
         put_avg,
         yerr=put_stddev,
         fmt="-o",
@@ -75,7 +89,7 @@ def make_plot(
         capsize=10,
     )
     plt.errorbar(
-        get_nodes,
+        new_positions,
         get_avg,
         yerr=get_stddev,
         fmt="-o",
@@ -84,9 +98,13 @@ def make_plot(
         capsize=10,
     )
 
+    # Set custom x-ticks with labels and evenly spaced positions
+    plt.xticks(new_positions, original_nodes)  # Set positions and corresponding labels
+
     plt.xlabel("Number of nodes")
     plt.ylabel("Average time (ms)")
     plt.title("Average time for PUT and GET requests")
+    plt.grid()
 
     plt.legend()
     plt.savefig(filename, format="pdf")
