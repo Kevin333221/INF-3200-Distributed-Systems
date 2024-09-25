@@ -112,16 +112,20 @@ def make_plot(
 
 
 if __name__ == "__main__":
-    if not os.path.exists("PUT_log.txt"):
+
+    PUT_LOG_FILE = "tests/PUT_ALL_log.txt"
+    GET_LOG_FILE = "tests/GET_ALL_log.txt"
+
+    if not os.path.exists(PUT_LOG_FILE):
         print("'PUT_log.txt' not found.")
         exit(1)
-    if not os.path.exists("GET_log.txt"):
+    if not os.path.exists(GET_LOG_FILE):
         print("'GET_log.txt' not found.")
         exit(1)
 
-    p_times = average_time("PUT_log.txt")
+    p_times = average_time(PUT_LOG_FILE)
     print(f"PUT times: {p_times}")
-    g_times = average_time("GET_log.txt")
+    g_times = average_time(GET_LOG_FILE)
     print(f"GET times: {g_times}")
 
     make_plot(p_times, g_times)

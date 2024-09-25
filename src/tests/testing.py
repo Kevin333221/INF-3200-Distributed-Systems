@@ -89,7 +89,7 @@ def check_GET_requests(addresses, keys):
     return failed
 
 def check_PUT_requests_All(addresses, keys):
-    for _ in range(3):
+    for _ in range(5):
         start_time = time.time()
         check_PUT_requests(addresses, keys)
         total_time = time.time() - start_time
@@ -99,7 +99,7 @@ def check_PUT_requests_All(addresses, keys):
             f.write(f"{amount_of_addresses} {total_time:.2f}\n")
 
 def check_GET_requests_All(addresses, keys):
-    for _ in range(3):
+    for _ in range(5):
         start_time = time.time()
         check_GET_requests(addresses, keys)
         total_time = time.time() - start_time
