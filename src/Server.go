@@ -311,8 +311,8 @@ func storageHandler(w http.ResponseWriter, r *http.Request) {
 		key := strings.TrimPrefix(r.URL.Path, "/storage/")
 		keyInt := hash(key)
 
-		if keyInt < 0 || keyInt >= 1<<keyIdentifierSpace {
-			log.Printf("Request %s - Invalid key: %d out of bounds\n", r.URL.Path, keyInt)
+		if keyInt < 0 || keyInt >= 1<<keyIdentifierSpace || fmt.Sprintf("%T", keyInt) != "int" {
+			log.Printf("Request %s - Invalid key: %d out of bounds or not an integer\n", r.URL.Path, keyInt)
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
@@ -384,7 +384,6 @@ func storageHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		serverInstance.storage[key] = value
-		w.WriteHeader(http.StatusOK)
 		return
 
 		// key := strings.TrimPrefix(r.URL.Path, "/storage/")
