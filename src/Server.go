@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -145,7 +144,7 @@ func (s *Server) findSuccessor(key int) *NodeAddress {
 	}
 
 	// If no closer predecessor is found, return the successor as fallback
-	return s.node.FingerTable[0].SuccessorID
+	return s.node.FingerTable[len(s.node.FingerTable)-1].SuccessorID
 }
 
 func (s *Server) findClosestPredecessor(key int) *NodeAddress {
@@ -154,12 +153,12 @@ func (s *Server) findClosestPredecessor(key int) *NodeAddress {
 	for i := len(s.node.FingerTable) - 1; i >= 0; i-- {
 		finger := s.node.FingerTable[i]
 
-		fmt.Printf("Checking finger %d: %d\n", i, finger.SuccessorID.Id)
+		// fmt.Printf("Checking finger %d: %d\n", i, finger.SuccessorID.Id)
 
 		// Check if the finger points to a node that is a valid predecessor of the key
 		// and that the finger node is closer to the key than the current node
 		if isBetween(s.node.Id, finger.SuccessorID.Id, key) {
-			fmt.Printf("Found closest predecessor: %d\n", finger.SuccessorID.Id)
+			// fmt.Printf("Found closest predecessor: %d\n", finger.SuccessorID.Id)
 			return finger.SuccessorID
 		}
 	}
@@ -184,44 +183,10 @@ func isBetween(n1, key, n2 int) bool {
 	return key > n1 || key < n2
 }
 
-func httpReq(url string) (*http.Response, error) {
-	client := &http.Client{Timeout: 10 * time.Second}
-	return client.Get(url)
-}
-
-func forwardPutStorageRequest(w http.ResponseWriter, address string, key string, value string) {
-
-	// Format the URL
-	url := fmt.Sprintf("http://%s/storage/%s", address, key)
-
-	// Forward the request to the given node
-	req, err := http.NewRequest("PUT", url, strings.NewReader(value))
-	if err != nil {
-		http.Error(w, "Error creating request", http.StatusInternalServerError)
-		return
-	}
-
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		http.Error(w, "Error connecting to successor node", http.StatusInternalServerError)
-		return
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusOK {
-		w.WriteHeader(http.StatusOK)
-	} else {
-		http.Error(w, "Error forwarding request to successor node", http.StatusInternalServerError)
-	}
-
-	// io.Copy(w, resp.Body)
-}
-
 // GET: Returns HTTP code 200, with value, if <key> exists in the DHT. Returns HTTP code 404, if <key> does not exist in the DHT.
 // PUT: Returns HTTP code 200. Assumed that <value> is persisted
 func storageHandler(w http.ResponseWriter, r *http.Request) {
-	start := time.Now() // Start timing the request
+
 	s := serverInstance
 
 	if r.Method == "GET" {
@@ -229,10 +194,7 @@ func storageHandler(w http.ResponseWriter, r *http.Request) {
 		key := strings.TrimPrefix(r.URL.Path, "/storage/")
 		keyInt := hash(key)
 
-		log.Printf("Looking up key %d in node %d for request %s\n", keyInt, s.node.Id, r.URL.Path)
-
-		if keyInt < 0 || keyInt >= 1<<keyIdentifierSpace {
-			log.Printf("Request %s - Invalid key: %d out of bounds\n", r.URL.Path, keyInt)
+		if keyInt < 0 || keyInt >= 1<<keyIdentifierSpace || fmt.Sprintf("%T", keyInt) != "int" {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
@@ -249,11 +211,10 @@ func storageHandler(w http.ResponseWriter, r *http.Request) {
 				if ok {
 					w.WriteHeader(http.StatusOK)
 					w.Write([]byte(value))
-					return
 				} else {
 					w.WriteHeader(http.StatusNotFound)
-					return
 				}
+				return
 			}
 		} else if keyInt > prev_node && keyInt <= curr_node {
 
@@ -261,58 +222,47 @@ func storageHandler(w http.ResponseWriter, r *http.Request) {
 			if ok {
 				w.WriteHeader(http.StatusOK)
 				w.Write([]byte(value))
-				return
 			} else {
 				w.WriteHeader(http.StatusNotFound)
-				return
 			}
+			return
 		}
 
 		successor := s.findSuccessor(keyInt)
-
-		log.Printf("Request %s - Forwarding to successor %d", r.URL.Path, successor.Id)
-
 		url := fmt.Sprintf("http://%s/storage/%s", successor.Address, key)
-		resp, err := httpReq(url)
+
+		client := &http.Client{Timeout: 10 * time.Second}
+		resp, err := client.Get(url)
+
 		if err != nil {
-			log.Printf("Request %s - Error connecting to successor node: %v", r.URL.Path, err)
 			http.Error(w, "Error connecting to successor node", http.StatusInternalServerError)
 			return
 		}
 
 		if resp.StatusCode == http.StatusOK {
-			log.Printf("Request %s - Successfully forwarded to: %s with ID %d", r.URL.Path, successor.Address, successor.Id)
 			body, err := io.ReadAll(resp.Body)
+
 			if err != nil {
-				log.Printf("Request %s - Error reading response from successor: %v", r.URL.Path, err)
 				http.Error(w, "Error reading response from successor node", http.StatusInternalServerError)
-				log.Printf("Request %s - Time taken: %v", r.URL.Path, time.Since(start))
 				return
 			}
+
 			w.WriteHeader(http.StatusOK)
 			w.Write(body)
-			log.Printf("Request %s - Time taken: %v", r.URL.Path, time.Since(start))
-			return
+
 		} else if resp.StatusCode == http.StatusNotFound {
-			log.Printf("Request %s - Key not found on: %d", r.URL.Path, successor.Id)
-
 			w.WriteHeader(http.StatusNotFound)
-
-			log.Printf("Request %s - Time taken: %v", r.URL.Path, time.Since(start))
-			return
 		} else {
-			log.Printf("Request %s - Error from successor node", r.URL.Path)
 			http.Error(w, "Error connecting to successor node", http.StatusInternalServerError)
-			log.Printf("Request %s - Time taken: %v", r.URL.Path, time.Since(start))
-			return
 		}
+		return
+
 	} else if r.Method == "PUT" {
 
 		key := strings.TrimPrefix(r.URL.Path, "/storage/")
 		keyInt := hash(key)
 
 		if keyInt < 0 || keyInt >= 1<<keyIdentifierSpace || fmt.Sprintf("%T", keyInt) != "int" {
-			log.Printf("Request %s - Invalid key: %d out of bounds or not an integer\n", r.URL.Path, keyInt)
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
@@ -338,25 +288,22 @@ func storageHandler(w http.ResponseWriter, r *http.Request) {
 				_, ok := s.storage[key]
 				if ok {
 					w.WriteHeader(http.StatusForbidden)
-					return
 				} else {
 					s.storage[key] = value
 					w.WriteHeader(http.StatusOK)
-					return
 				}
-
+				return
 			}
 		} else if keyInt > prev_node && keyInt <= curr_node {
 
 			_, ok := s.storage[key]
 			if ok {
 				w.WriteHeader(http.StatusForbidden)
-				return
 			} else {
 				s.storage[key] = value
 				w.WriteHeader(http.StatusOK)
-				return
 			}
+			return
 		}
 
 		successor := s.findSuccessor(keyInt)
@@ -379,53 +326,11 @@ func storageHandler(w http.ResponseWriter, r *http.Request) {
 
 		if resp.StatusCode == http.StatusOK {
 			w.WriteHeader(http.StatusOK)
+			serverInstance.storage[key] = value
 		} else {
 			http.Error(w, "Error forwarding request to successor node", http.StatusInternalServerError)
 		}
-
-		serverInstance.storage[key] = value
 		return
-
-		// key := strings.TrimPrefix(r.URL.Path, "/storage/")
-		// hashedKey := hash(key)
-
-		// body, err := io.ReadAll(r.Body)
-		// if err != nil {
-		// 	fmt.Println("Error reading body:", err)
-		// 	w.WriteHeader(http.StatusInternalServerError)
-		// 	return
-		// }
-		// defer r.Body.Close()
-
-		// value := string(body)
-
-		// Check if the hashed key is within the range of the current node
-
-		// // Check if the hashed key is within the range of the current node
-		// if hashedKey <= serverInstance.node.Id && hashedKey > serverInstance.node.PredecessorID.Id {
-		// 	// If the key already exists in the storage, return 403 Forbidden
-		// 	if _, exists := serverInstance.storage[key]; exists {
-		// 		w.WriteHeader(http.StatusForbidden)
-		// 		w.Header().Set("Content-Type", "text/plain")
-		// 		return
-		// 	}
-
-		// 	// If not, add the key to the storage
-		// 	serverInstance.storage[key] = value
-		// 	w.WriteHeader(http.StatusOK)
-		// 	return
-		// } else if hashedKey > serverInstance.node.Id {
-		// 	// If the hashed key is in range of the successor node
-		// 	if hashedKey <= serverInstance.node.SuccessorID.Id {
-		// 		// Forward to the successor node
-		// 		forwardPutStorageRequest(w, serverInstance.node.SuccessorID.Address, key, value)
-		// 		return
-		// 	}
-
-		// 	//If not in range of the successor node, find the correct successor node
-		// 	successor := serverInstance.findSuccessor(hashedKey)
-		// 	forwardPutStorageRequest(w, successor.Address, key, value)
-		// }
 	}
 }
 
@@ -467,13 +372,6 @@ func helloworldHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-
-	// logFile, err := os.OpenFile("dht_performance.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-	// defer logFile.Close()
-	// log.SetOutput(logFile)
 
 	nodeID, err := strconv.Atoi(os.Args[1])
 
