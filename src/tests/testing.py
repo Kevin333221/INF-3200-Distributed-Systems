@@ -88,6 +88,26 @@ def check_GET_requests(addresses, keys):
 
     return failed
 
+def check_PUT_requests_All(addresses, keys):
+    for _ in range(3):
+        start_time = time.time()
+        check_PUT_requests(addresses, keys)
+        total_time = time.time() - start_time
+        print(f"PUT time: {total_time:.2f} seconds")
+        
+        with open("PUT_ALL_log.txt", "a") as f:
+            f.write(f"{amount_of_addresses} {total_time:.2f}\n")
+
+def check_GET_requests_All(addresses, keys):
+    for _ in range(3):
+        start_time = time.time()
+        check_GET_requests(addresses, keys)
+        total_time = time.time() - start_time
+        print(f"GET time: {total_time:.2f} seconds")
+
+        with open("GET_ALL_log.txt", "a") as f:
+            f.write(f"{amount_of_addresses} {total_time:.2f}\n")
+
 if __name__ == "__main__":
     
     # Get the list of addresses from the command line arguments one by one
@@ -104,18 +124,5 @@ if __name__ == "__main__":
 
     # print("Success!") if not check_GET_requests(addresses, keys) else print("Failure")
 
-    start_time = time.time()
-    check_PUT_requests(addresses, keys)
-    total_time = time.time() - start_time
-    print(f"PUT time: {total_time:.2f} seconds")
-    
-    with open("PUT_ALL_log.txt", "a") as f:
-        f.write(f"{amount_of_addresses} {total_time:.2f}\n")
-
-    start_time = time.time()
-    check_GET_requests(addresses, keys)
-    total_time = time.time() - start_time
-    print(f"GET time: {total_time:.2f} seconds")
-
-    with open("GET_ALL_log.txt", "a") as f:
-        f.write(f"{amount_of_addresses} {total_time:.2f}\n")
+    check_PUT_requests_All(addresses, keys)
+    check_GET_requests_All(addresses, keys)
