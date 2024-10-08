@@ -76,6 +76,9 @@ func InitServer(node *Node) {
 	// Start the server shutdown timer
 	go startServerShutdownTimer(shutdownChan)
 
+	// Start the periodic finger table update
+	// go periodicUpdateFingerTable()
+
 	// Wait for the shutdown signal
 	<-shutdownChan
 
@@ -101,7 +104,14 @@ func initMux() *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/helloworld", helloworldHandler)
 	mux.HandleFunc("/storage/", storageHandler)
+	mux.HandleFunc("/getkeys", transferKeysHandler)
 	mux.HandleFunc("/network", networkHandler)
+	mux.HandleFunc("/node-info", nodeInfoHandler)
+	mux.HandleFunc("/leave", leaveHandler)
+	mux.HandleFunc("/sim-crash", simulateCrash)
+	mux.HandleFunc("/sim-recover", simulateRecover)
+	mux.HandleFunc("/join", joinRingHandler)
+
 	return mux
 }
 
@@ -181,6 +191,42 @@ func isBetween(n1, key, n2 int) bool {
 		return key > n1 && key < n2
 	}
 	return key > n1 || key < n2
+}
+
+func get_keys_in_range(start, end int) []string {
+	keys := make([]string, 0)
+	for key, _ := range serverInstance.storage {
+		keyInt := hash(key)
+		fmt.Printf("Key: %s Hash: %d Start: %d End: %d\n", key, keyInt, start, end)
+		if isBetween(start, keyInt, end) {
+			keys = append(keys, key)
+		}
+	}
+	return keys
+}
+
+func transferKeysHandler(w http.ResponseWriter, r *http.Request) {
+
+	// Incomming node ID
+	nodeID := r.URL.Query().Get("nodeID")
+
+	if nodeID == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	nodeIDInt, err := strconv.Atoi(nodeID)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	fmt.Printf("Transferring keys to node %d\n", nodeIDInt)
+
+	// Get the keys in the range of the given node
+	keys := get_keys_in_range(serverInstance.node.PredecessorID.Id, nodeIDInt)
+
+	fmt.Printf("Keys to transfer to %d: %v\n", nodeIDInt, keys)
 }
 
 // GET: Returns HTTP code 200, with value, if <key> exists in the DHT. Returns HTTP code 404, if <key> does not exist in the DHT.
@@ -434,44 +480,407 @@ func helloworldHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *Server) create_info_interface() map[string]interface{} {
+	data := make(map[string]interface{})
+	data["node_hash"] = s.node.Id
+	data["address"] = s.node.Address
+
+	if s.node.SuccessorID == nil {
+		data["successor"] = "nil"
+	} else {
+		data["successor"] = s.node.SuccessorID.Address
+	}
+
+	others := make([]string, 0)
+	for _, node := range s.node.FingerTable {
+		if node.SuccessorID == nil {
+			others = append(others, "nil")
+		} else {
+			others = append(others, node.SuccessorID.Address)
+		}
+	}
+
+	data["others"] = others
+	return data
+}
+
+func nodeInfoHandler(w http.ResponseWriter, r *http.Request) {
+
+	s := serverInstance
+
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+
+	} else if r.Method == http.MethodGet {
+
+		data := s.create_info_interface()
+
+		askingId := r.URL.Query().Get("successor")
+		if askingId != "" {
+			keyInt, err := strconv.Atoi(askingId)
+			key := "successor_of_" + strconv.Itoa(keyInt)
+
+			if err != nil || keyInt < 0 || keyInt >= 1<<keyIdentifierSpace {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+
+			curr_node := s.node.Id
+			prev_node := s.node.PredecessorID.Id
+			data[key] = s.node.Address
+
+			// If the current node is the only node in the ring, return it self
+			if curr_node == prev_node {
+				send_node_info(w, data)
+				return
+			}
+
+			// Checking for wrap-around in the ring
+			if prev_node > curr_node {
+				if keyInt <= curr_node || keyInt > prev_node {
+					send_node_info(w, data)
+					return
+				}
+			} else if keyInt > prev_node && keyInt <= curr_node {
+				// If the key falls between the current node and its predecessor, return the value
+				send_node_info(w, data)
+				return
+			}
+
+			successor := s.findSuccessor(keyInt)
+
+			// If the successor is the current node, return it self
+			if successor.Address == s.node.Address {
+				send_node_info(w, data)
+				return
+
+			} else {
+
+				// Forward the request to the successor node
+				url := fmt.Sprintf("http://%s/node-info?successor=%d", successor.Address, keyInt)
+
+				client := &http.Client{Timeout: 10 * time.Second}
+				resp, err := client.Get(url)
+
+				if err != nil {
+					http.Error(w, "Error connecting to successor node", http.StatusInternalServerError)
+					return
+				}
+
+				// Handle the response
+				if resp.StatusCode == http.StatusOK {
+
+					var successorData map[string]interface{}
+					decoder := json.NewDecoder(resp.Body)
+					err = decoder.Decode(&successorData)
+
+					if err != nil {
+						http.Error(w, "Error decoding JSON", http.StatusInternalServerError)
+						return
+					}
+
+					data["address"] = successorData["address"]
+					data["successor"] = successorData["successor"]
+					data["others"] = successorData["others"]
+					data[key] = successorData[key]
+					send_node_info(w, data)
+
+				} else if resp.StatusCode == http.StatusNotFound {
+					w.WriteHeader(http.StatusNotFound)
+				} else {
+					http.Error(w, "Error connecting to successor node", http.StatusInternalServerError)
+				}
+			}
+			return
+		}
+
+		send_node_info(w, data)
+		return
+	}
+}
+
+func send_node_info(w http.ResponseWriter, data map[string]interface{}) {
+	jsonData, err := json.MarshalIndent(data, "", "\t")
+
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Error encoding JSON"))
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(jsonData)
+}
+
+func get_response(w http.ResponseWriter, url string) *http.Response {
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Get(url)
+
+	if err != nil {
+		http.Error(w, "Error connecting to successor node", http.StatusInternalServerError)
+		return nil
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		http.Error(w, "Error getting node info", http.StatusInternalServerError)
+		return nil
+	}
+
+	return resp
+}
+
+func joinRingHandler(w http.ResponseWriter, r *http.Request) {
+
+	s := serverInstance
+
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+
+	} else if r.Method == http.MethodPost {
+
+		successorID := r.URL.Query().Get("nprime")
+		if successorID == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		successorInfo := fmt.Sprintf("http://%s/node-info", successorID)
+		resp := get_response(w, successorInfo)
+		if resp == nil {
+			return
+		}
+
+		var successor map[string]interface{}
+		decoder := json.NewDecoder(resp.Body)
+		err := decoder.Decode(&successor)
+
+		if err != nil {
+			http.Error(w, "Error decoding JSON", http.StatusInternalServerError)
+			return
+		}
+
+		// Sending a request to the successor node to get the node info
+		nodeInfo := fmt.Sprintf("http://%s/node-info?successor=%d", successorID, s.node.Id)
+		resp = get_response(w, nodeInfo)
+		if resp == nil {
+			return
+		}
+
+		// Decode the JSON response
+		var data map[string]interface{}
+		decoder = json.NewDecoder(resp.Body)
+		err = decoder.Decode(&data)
+
+		if err != nil {
+			http.Error(w, "Error decoding JSON", http.StatusInternalServerError)
+			return
+		}
+
+		// Update the successor of the current node
+		key := "successor_of_" + strconv.Itoa(s.node.Id)
+		request := fmt.Sprintf("http://%s/node-info", data[key].(string))
+		resp = get_response(w, request)
+		if resp == nil {
+			return
+		}
+
+		var successorData map[string]interface{}
+		decoder = json.NewDecoder(resp.Body)
+		err = decoder.Decode(&successorData)
+
+		if err != nil {
+			http.Error(w, "Error decoding JSON", http.StatusInternalServerError)
+			return
+		}
+
+		s.node.SuccessorID = &NodeAddress{
+			Id:      int(successorData["node_hash"].(float64)),
+			Address: successorData["address"].(string),
+		}
+
+		fmt.Printf("SUCCESSOR: %v\n", s.node.SuccessorID)
+
+		// Get keys from the storage from the successor node that should be transferred to the current node
+		// keys := make([]string, 0)
+
+		// Iterate through the storage of the successor node
+		request = fmt.Sprintf("http://%s/storage", s.node.SuccessorID.Address)
+		resp = get_response(w, request)
+		if resp == nil {
+			return
+		}
+
+		var storage map[string]string
+		decoder = json.NewDecoder(resp.Body)
+		err = decoder.Decode(&storage)
+
+		if err != nil {
+			http.Error(w, "Error decoding JSON", http.StatusInternalServerError)
+			return
+		}
+
+		fmt.Printf("STORAGE: %v\n", storage)
+
+		// // Iterate through the storage of the successor node
+		// for key, _ := range storage {
+		// 	keyInt := hash(key)
+		// 	if isBetween(s.node.Id, keyInt, s.node.SuccessorID.Id) {
+		// 		keys = append(keys, key)
+		// 	}
+		// }
+	}
+}
+
+// func periodicUpdateFingerTable() {
+// 	ticker := time.NewTicker(5 * time.Second)
+// 	defer ticker.Stop()
+
+// 	for range ticker.C {
+// 		fmt.Println("Updating Finger Table...")
+// 		updateFingerTable()
+// 	}
+// }
+
+// func updateFingerTable() {
+// 	// s := serverInstance
+// }
+
+// func (s *Server) updateFingerTable(node *NodeAddress, i int) {
+
+// 	// Check if the node is the immediate successor of the current node
+// 	if isBetween(s.node.Id, node.Id, s.node.FingerTable[i].SuccessorID.Id) {
+// 		s.node.FingerTable[i].SuccessorID = node
+
+// 		// Update the successor of the current node
+// 		if i == 0 {
+// 			s.node.SuccessorID = node
+// 		}
+
+// 		// Update the predecessor of the successor node
+// 		if i == len(s.node.FingerTable)-1 {
+// 			s.updatePredecessor(node)
+// 		}
+// 	}
+// }
+
+// func (s *Server) updatePredecessor(node *NodeAddress) {
+// 	// Check if the node is the immediate predecessor of the current node
+// 	if isBetween(s.node.PredecessorID.Id, node.Id, s.node.Id) {
+// 		s.node.PredecessorID = node
+// 	}
+// }
+
+func leaveHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	} else if r.Method == http.MethodPost {
+		// TODO: Implement leave handler
+	}
+}
+
+func simulateCrash(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	} else if r.Method == http.MethodPost {
+		// TODO: Implement crash simulation
+	}
+}
+
+func simulateRecover(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	} else if r.Method == http.MethodPost {
+		// TODO: Implement recovery simulation
+	}
+}
+
+func createNewNode() {
+
+	// Creates a new id by hashing a random number
+	id := hash(strconv.Itoa(int(time.Now().UnixNano())))
+	for id == 0 || id == 4 || id == 8 || id == 12 {
+		id = hash(strconv.Itoa(int(time.Now().UnixNano())))
+	}
+
+	address := os.Args[3]
+	fingerTable := make([]*FingerEntry, keyIdentifierSpace)
+
+	for i := 0; i < keyIdentifierSpace; i++ {
+		fingerTable[i] = &FingerEntry{
+			Start:       -1,
+			SuccessorID: nil,
+		}
+	}
+
+	newNode := &Node{
+		Id:            id,
+		FingerTable:   fingerTable,
+		SuccessorID:   &NodeAddress{Id: id, Address: address},
+		PredecessorID: nil,
+		Address:       address,
+	}
+
+	InitServer(newNode)
+}
+
 func main() {
 
 	nodeID, err := strconv.Atoi(os.Args[1])
+	newNode := os.Args[2]
 
 	if err != nil {
 		fmt.Println("Error parsing node ID:", err)
 		return
 	}
 
-	// Read data from "Nodes.json"
-	file, err := os.Open("DeployServers/Nodes.json")
-	if err != nil {
-		fmt.Println("Error opening file:", err)
-		return
-	}
-	defer file.Close()
-
-	var nodes []*Node
-	decoder := json.NewDecoder(file)
-	err = decoder.Decode(&nodes)
-
-	if err != nil {
-		fmt.Println("Error decoding JSON:", err)
-		return
-	}
-
-	var foundNode *Node
-	for _, node := range nodes {
-		if node.Id == nodeID {
-			foundNode = node
-			break
+	if newNode == "true" {
+		fmt.Println("Created new node")
+		keyIdentifierSpace, err = strconv.Atoi(os.Args[4])
+		if err != nil {
+			fmt.Println("Error parsing key identifier space:", err)
+			return
 		}
-	}
 
-	if foundNode == nil {
-		fmt.Println("Node not found")
-		return
-	}
+		createNewNode()
+	} else {
 
-	InitServer(foundNode)
+		// Read data from "Nodes.json"
+		file, err := os.Open("DeployServers/Nodes.json")
+		if err != nil {
+			fmt.Println("Error opening file:", err)
+			return
+		}
+		defer file.Close()
+
+		var nodes []*Node
+		decoder := json.NewDecoder(file)
+		err = decoder.Decode(&nodes)
+
+		if err != nil {
+			fmt.Println("Error decoding JSON:", err)
+			return
+		}
+
+		var foundNode *Node
+		for _, node := range nodes {
+			if node.Id == nodeID {
+				foundNode = node
+				break
+			}
+		}
+
+		if foundNode == nil {
+			fmt.Println("Node not found")
+			return
+		}
+
+		InitServer(foundNode)
+	}
 }

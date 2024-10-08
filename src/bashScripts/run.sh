@@ -87,7 +87,7 @@ while IFS= read -r line; do
     node=${node_array[$((counter % amount_nodes))]}
 
     # Start server on node
-    ssh -f $node "cd $PWD/.. && go run Server.go $id && echo Server started on $node"
+    ssh -f $node "cd $PWD/.. && go run Server.go $id false && echo Server started on $node"
 
     counter=$((counter + 1))
 
