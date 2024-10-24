@@ -1,3 +1,2 @@
 Members:                    : UiT Username
-Skjalg Alexander Slubowski  - ssl028
 Kevin Mathias Bergan        - kbe153

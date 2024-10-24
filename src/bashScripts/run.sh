@@ -40,11 +40,7 @@ IFS=$'\n' read -r -d '' -a node_array <<< "$shuffled_nodes"
 amount_nodes=${#node_array[@]}
 
 # Initialize and format list
-node_list="["
-
-cd ../DeployServers
-
-go_list="["
+node_list="'["
 addr_list=""
 
 counter=0
@@ -58,39 +54,29 @@ while [[ $counter -lt $amount_nodes ]]; do
     nodePort="$node:$port"
 
     # Add node to node list
-    go_list+="\"$nodePort\","
     addr_list+="$nodePort "
+    node_list+="\"$nodePort\","
 
     counter=$((counter + 1))
 done
 
-go_list=${go_list::-1}
-go_list+="]"
-
-echo $addr_list
-
-# Get node IDs
-go build && ./DeployServers $2 $go_list $amount_nodes
-
-python3 ../DeployServers/get_ids.py
-
-until [ -f ../DeployServers/node_ids.txt ]
-do
-    sleep 1
-done
+# Remove trailing comma and add closing bracket
+node_list="${node_list%,}]'"
+echo $node_list
+# echo $addr_list
 
 counter=0
-while IFS= read -r line; do
+while [[ $counter -lt $1 ]]; do
     id=$line
 
     # Get node from array, wrap around if needed
     node=${node_array[$((counter % amount_nodes))]}
 
+    # Get node and port from addr_list
+    nodePort=$(echo $addr_list | cut -d ' ' -f $((counter + 1)))
+
     # Start server on node
-    ssh -f $node "cd $PWD/.. && go run Server.go $id false && echo Server started on $node"
+    ssh -f $node "cd $PWD/.. && go build && ./src 0 true $nodePort $2"
 
     counter=$((counter + 1))
-
-done < node_ids.txt
-
-rm node_ids.txt
+done
