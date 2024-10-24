@@ -36,10 +36,10 @@ func storageHandler(w http.ResponseWriter, r *http.Request) {
 
 		// If the current node is the only node in the ring, return the value
 		if s.node.PredecessorID == nil {
-			_, ok := s.storage[key]
+			value, ok := s.storage[key]
 			if ok {
 				w.WriteHeader(http.StatusOK)
-				w.Write([]byte(s.storage[key]))
+				w.Write([]byte(value))
 			} else {
 				w.WriteHeader(http.StatusNotFound)
 			}
@@ -51,7 +51,7 @@ func storageHandler(w http.ResponseWriter, r *http.Request) {
 
 		// Checking for wrap-around in the ring
 		if prev_node > curr_node {
-			if keyInt <= curr_node || keyInt > prev_node {
+			if prev_node < keyInt || keyInt <= curr_node {
 
 				// Check local storage
 				value, ok := s.storage[key]
@@ -63,7 +63,8 @@ func storageHandler(w http.ResponseWriter, r *http.Request) {
 				}
 				return
 			}
-		} else if keyInt > prev_node && keyInt <= curr_node {
+
+		} else if prev_node < keyInt && keyInt <= curr_node {
 
 			// If the key falls between the current node and its predecessor, return the value
 			value, ok := s.storage[key]
@@ -78,18 +79,6 @@ func storageHandler(w http.ResponseWriter, r *http.Request) {
 
 		// Find the successor node for the given key
 		successor := s.findSuccessor(keyInt)
-
-		// If the successor is the current node, return the value
-		if successor.Address == s.node.Address {
-			value, ok := s.storage[key]
-			if ok {
-				w.WriteHeader(http.StatusOK)
-				w.Write([]byte(value))
-			} else {
-				w.WriteHeader(http.StatusNotFound)
-			}
-			return
-		}
 
 		// Forward the request to the successor node
 		url := fmt.Sprintf("http://%s/storage/%s", successor.Address, key)
@@ -107,22 +96,19 @@ func storageHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Handle the response
-		if resp.StatusCode == http.StatusOK {
-			body, err := io.ReadAll(resp.Body)
-
-			if err != nil {
-				http.Error(w, "Error reading response from successor node", http.StatusInternalServerError)
-				return
-			}
-
-			w.WriteHeader(http.StatusOK)
-			w.Write(body)
-
-		} else if resp.StatusCode == http.StatusNotFound {
-			w.WriteHeader(http.StatusNotFound)
-		} else {
-			http.Error(w, "Error connecting to successor node", http.StatusInternalServerError)
+		if resp.StatusCode != http.StatusOK {
+			http.Error(w, "Error forwarding request to successor node", http.StatusInternalServerError)
+			return
 		}
+
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			http.Error(w, "Error reading response from successor node", http.StatusInternalServerError)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+		w.Write(body)
 		return
 
 	} else if r.Method == "PUT" {
@@ -151,8 +137,8 @@ func storageHandler(w http.ResponseWriter, r *http.Request) {
 			if ok {
 				w.WriteHeader(http.StatusForbidden)
 			} else {
-				s.storage[key] = value
 				w.WriteHeader(http.StatusOK)
+				s.storage[key] = value
 			}
 			return
 		}
@@ -162,47 +148,33 @@ func storageHandler(w http.ResponseWriter, r *http.Request) {
 
 		// Checking for wrap-around in the ring
 		if prev_node > curr_node {
-			if keyInt <= curr_node || keyInt > prev_node {
-
-				// Check local storage
+			if prev_node < keyInt || keyInt <= curr_node {
 				_, ok := s.storage[key]
 				if ok {
 					w.WriteHeader(http.StatusForbidden)
 				} else {
 					// Store the value if the key is not already present
-					s.storage[key] = value
 					w.WriteHeader(http.StatusOK)
+					s.storage[key] = value
 				}
 				return
 			}
-		} else if keyInt > prev_node && keyInt <= curr_node {
+
+		} else if prev_node < keyInt && keyInt <= curr_node {
 			// If the key falls between the current node and its predecessor, store the value
 			_, ok := s.storage[key]
 			// Store the value only if the key is not already present
 			if ok {
 				w.WriteHeader(http.StatusForbidden)
 			} else {
-				s.storage[key] = value
 				w.WriteHeader(http.StatusOK)
+				s.storage[key] = value
 			}
 			return
 		}
 
 		// Find the successor node for the given key
 		successor := s.findSuccessor(keyInt)
-
-		// If the successor is the current node, store the value
-		if successor.Address == s.node.Address {
-			_, ok := s.storage[key]
-			// Store the value only if the key is not already present
-			if ok {
-				w.WriteHeader(http.StatusForbidden)
-			} else {
-				s.storage[key] = value
-				w.WriteHeader(http.StatusOK)
-			}
-			return
-		}
 
 		// Forward the request to the successor node
 		url := fmt.Sprintf("http://%s/storage/%s", successor.Address, key)
@@ -229,12 +201,12 @@ func storageHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Handle the response
-		if resp.StatusCode == http.StatusOK {
-			w.WriteHeader(http.StatusOK)
-			// s.storage[key] = value
-		} else {
+		if resp.StatusCode != http.StatusOK {
 			http.Error(w, "Error forwarding request to successor node", http.StatusInternalServerError)
+			return
 		}
+
+		w.WriteHeader(http.StatusOK)
 		return
 	}
 }

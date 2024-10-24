@@ -163,7 +163,8 @@ func (s *Server) findClosestPredecessor(key int) *NodeAddress {
 
 func get_response(url string) *http.Response {
 	client := &http.Client{Timeout: 10 * time.Second}
-	resp, _ := client.Get(url)
+	request, _ := http.NewRequest(http.MethodGet, url, nil)
+	resp, _ := client.Do(request)
 	return resp
 }
 
